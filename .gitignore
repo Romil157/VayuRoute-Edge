@@ -1,0 +1,23 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.ipynb_checkpoints
+
+# Node
+node_modules/
+dist/
+coverage/
+.npm
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# VayuRoute specific artifacts
+temp/
+logs/
