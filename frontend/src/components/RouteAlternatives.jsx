@@ -5,8 +5,8 @@ export default function RouteAlternatives({ v1_ai }) {
 
   return (
     <div className="glass-panel">
-      <h2>DQN Route Alternatives</h2>
-      <p style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: 0 }}>Showing top rejected TSP permutations.</p>
+      <h2>AI Router Alternatives</h2>
+      <p style={{ fontSize: '0.8rem', color: '#8b949e', marginTop: 0 }}>Showing rejected TSP permutations evaluated by RiskAwareRouter.</p>
       
       {v1_ai.alternatives.map((alt, i) => (
         <div key={i} style={{ marginBottom: i < v1_ai.alternatives.length - 1 ? '1rem' : 0, paddingBottom: i < v1_ai.alternatives.length - 1 ? '1rem' : 0, borderBottom: i < v1_ai.alternatives.length - 1 ? '1px solid rgba(48,54,61,0.5)' : 'none' }}>

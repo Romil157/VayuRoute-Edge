@@ -4,3 +4,7 @@ websockets
 networkx
 torch
 numpy
+osmnx
+requests
+scipy
+shapely

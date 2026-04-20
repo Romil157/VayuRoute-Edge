@@ -53,6 +53,37 @@ body {
   text-shadow: 0 0 20px rgba(88,166,255,0.4);
 }
 
+/* Slim one-line status strip below the top navigation bar */
+.status-strip {
+  height: 28px;
+  background: rgba(13, 17, 23, 0.5);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(48, 54, 61, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0 2rem;
+  font-size: 0.75rem;
+  color: #8b949e;
+  z-index: 999;
+  letter-spacing: 0.3px;
+}
+
+.status-strip .strip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.status-strip .strip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
 .main-layout {
   display: grid;
   grid-template-columns: 7fr 3fr;

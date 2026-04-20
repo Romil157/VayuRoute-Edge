@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 
 export default function RouteBuilder({ nodes }) {
-  const [start, setStart] = useState("H");
-  const [end, setEnd] = useState("R");
+  // Default route: Andheri East area (F = WEH Hub) to Kurla corridor (G = Bandra Kurla Complex)
+  const [start, setStart] = useState("F");
+  const [end, setEnd]     = useState("G");
+
   const [stops, setStops] = useState([]);
   
   const addStop = () => {

@@ -21,3 +21,6 @@ coverage/
 # VayuRoute specific artifacts
 temp/
 logs/
+
+# OSMnx Cache
+cache/

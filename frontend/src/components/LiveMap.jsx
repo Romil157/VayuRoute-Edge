@@ -33,8 +33,8 @@ export default function LiveMap({ data, routingMode }) {
       )}
 
       <MapContainer 
-        center={[19.0600, 72.8400]} 
-        zoom={12} 
+        center={[19.09, 72.86]} 
+        zoom={13} 
         style={{ height: '100%', width: '100%', background: 'transparent' }}
         zoomControl={false}
       >
@@ -65,7 +65,11 @@ export default function LiveMap({ data, routingMode }) {
         {vehicles.map((v, i) => {
           const pathKeys = routingMode === 'AI' ? v.ai.path : v.baseline.path;
           if (!pathKeys || pathKeys.length === 0) return null;
-          const positions = pathKeys.map(k => [nodes[k].lat, nodes[k].lng]);
+          // Map each node ID to its lat/lng — guard against missing nodes
+          const positions = pathKeys
+            .filter(k => nodes[k])
+            .map(k => [nodes[k].lat, nodes[k].lng]);
+          if (positions.length < 2) return null;
           
           let rejectedPoly = null;
           if (routingMode === 'AI' && v.baseline.path.length > 0 && v.baseline.path.join() !== v.ai.path.join()) {

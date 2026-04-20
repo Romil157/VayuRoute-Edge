@@ -9,10 +9,13 @@ class Simulator:
         # Multi-vehicle support
         # active_path: current path being traversed
         # path_idx: current index in the path
+        # V1: Andheri East corridor (F=WEH Hub) -> Kurla side (G=Bandra Kurla Complex)
+        # V2: Andheri Station (A) -> SV Road Junction (B) — short corridor loop
         self.vehicles = [
-            {"id": "V1", "pos": "C", "target": "R", "fuel": 100, "stops": [], "active_path": [], "path_idx": 0},
-            {"id": "V2", "pos": "A", "target": "E", "fuel": 80, "stops": [], "active_path": [], "path_idx": 0}   
+            {"id": "V1", "pos": "F", "target": "G", "fuel": 100, "stops": [], "active_path": [], "path_idx": 0},
+            {"id": "V2", "pos": "A", "target": "B", "fuel": 80,  "stops": [], "active_path": [], "path_idx": 0},
         ]
+
         self.active_event = "normal"
         self.pause_duration = 0
         self.horizon_mins = 45
