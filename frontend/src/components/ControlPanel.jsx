@@ -1,72 +1,90 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+const BASE = 'http://localhost:8000';
 
 export default function ControlPanel() {
+  const [status, setStatus] = useState('');
+
   const triggerEvent = async (type) => {
+    setStatus(`Sending: ${type}...`);
     try {
-      await fetch(`http://localhost:8000/trigger/${type}`, { method: 'POST' });
+      const res = await fetch(`${BASE}/trigger/${type}`, { method: 'POST' });
+      if (!res.ok) {
+        const text = await res.text();
+        setStatus(`Error ${res.status}: ${text}`);
+      } else {
+        setStatus(`OK: ${type}`);
+      }
     } catch (e) {
-      console.error(e);
+      setStatus(`Failed to reach backend: ${e.message}`);
     }
   };
 
   const setTimeline = async (val) => {
     try {
-      await fetch(`http://localhost:8000/timeline/${val}`, { method: 'POST' });
-    } catch (e) {}
+      const res = await fetch(`${BASE}/timeline/${val}`, { method: 'POST' });
+      if (!res.ok) setStatus(`Timeline error ${res.status}`);
+    } catch (e) {
+      setStatus(`Timeline fetch failed: ${e.message}`);
+    }
   };
 
   const runTurboDemo = async () => {
-    // 1. Set a complex route
-    const complexRoute = {
-      start: "A",
-      end: "R",
-      stops: [
-        { id: "D", priority: "High", deadline_mins: 30 },
-        { id: "H", priority: "Medium", deadline_mins: 60 }
-      ]
-    };
-    
-    await fetch(`http://localhost:8000/set_route`, { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(complexRoute)
-    });
-
-    // 2. Start normal
+    setStatus('Turbo demo starting...');
     await triggerEvent('normal');
-    
-    // 3. Trigger Rain after 3s
     setTimeout(() => triggerEvent('rain'), 3000);
-    
-    // 4. Trigger Flood and Predictive Slider after 7s
     setTimeout(() => {
-        triggerEvent('flood');
-        setTimeline(45);
+      triggerEvent('flood');
+      setTimeline(45);
     }, 7000);
-
-    // 5. Restore normal after 20s
     setTimeout(() => {
-        triggerEvent('normal');
-        setTimeline(0);
+      triggerEvent('low_fuel');
+    }, 13000);
+    setTimeout(() => {
+      triggerEvent('normal');
+      setTimeline(0);
+      setStatus('Turbo demo complete.');
     }, 20000);
   };
 
   return (
     <div className="glass-panel">
       <h2>Simulation Control</h2>
+
+      {status && (
+        <div style={{
+          marginBottom: '0.6rem',
+          padding: '0.4rem 0.6rem',
+          background: 'rgba(255,255,255,0.05)',
+          borderRadius: '4px',
+          fontSize: '0.75rem',
+          color: status.startsWith('Error') || status.startsWith('Failed') ? '#ff6b6b' : '#00e5ff'
+        }}>
+          {status}
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-        <button className="btn-primary" onClick={() => triggerEvent('normal')}>Initialize / Clear Events</button>
-        <button onClick={() => triggerEvent('rain')}>Trigger Rain Module</button>
-        <button className="btn-danger" onClick={() => triggerEvent('flood')}>Inject Flood Parameters</button>
-        <button onClick={() => triggerEvent('low_fuel')}>Drop Fuel Telemetry</button>
-        
+        <button className="btn-primary" onClick={() => triggerEvent('normal')}>
+          Initialize / Clear Events
+        </button>
+        <button onClick={() => triggerEvent('rain')}>
+          Trigger Rain Module
+        </button>
+        <button className="btn-danger" onClick={() => triggerEvent('flood')}>
+          Inject Flood Parameters
+        </button>
+        <button onClick={() => triggerEvent('low_fuel')}>
+          Drop Fuel Telemetry
+        </button>
+
         <hr style={{ borderColor: 'rgba(48,54,61,0.5)', margin: '0.4rem 0' }} />
-        
-        <button 
-          onClick={runTurboDemo} 
-          style={{ 
-            backgroundColor: 'rgba(255, 171, 0, 0.2)', 
-            color: '#ffab00', 
+
+        <button
+          onClick={runTurboDemo}
+          style={{
+            backgroundColor: 'rgba(255,171,0,0.2)',
+            color: '#ffab00',
             borderColor: '#ffab00',
             fontSize: '1rem',
             padding: '1rem'
