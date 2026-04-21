@@ -1,159 +1,166 @@
-import React, { useState, useEffect } from 'react';
-import { useWebSocket } from './hooks/useWebSocket';
-import LiveMap from './components/LiveMap';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
+import BusinessImpact from './components/BusinessImpact';
 import ControlPanel from './components/ControlPanel';
+import CostFunctionPanel from './components/CostFunctionPanel';
 import DecisionIntelligence from './components/DecisionIntelligence';
 import DeltaComparison from './components/DeltaComparison';
-import TimelineSlider from './components/TimelineSlider';
-import SystemLog from './components/SystemLog';
+import LiveMap from './components/LiveMap';
 import PerformancePanel from './components/PerformancePanel';
-import RouteBuilder from './components/RouteBuilder';
-import BusinessImpact from './components/BusinessImpact';
-import CostFunctionPanel from './components/CostFunctionPanel';
 import RouteAlternatives from './components/RouteAlternatives';
+import RouteBuilder from './components/RouteBuilder';
+import SystemLog from './components/SystemLog';
+import TimelineSlider from './components/TimelineSlider';
+import VehicleTelemetryPanel from './components/VehicleTelemetryPanel';
+import { useWebSocket } from './hooks/useWebSocket';
+import { wsUrl } from './lib/api';
 
-// STGCN model size in MB (printed by the backend on startup, kept as constant here)
 const MODEL_SIZE_MB = 0.02;
+const TruckSimulation3D = lazy(() => import('./components/TruckSimulation3D'));
 
-function StatusStrip({ graphSource, weather, latency, routingMode }) {
-  const graphLabel  = graphSource === 'osm' ? 'OSM Graph Loaded' : 'Synthetic Fallback';
-  const graphColor  = graphSource === 'osm' ? '#3fb950' : '#f0883e';
-
-  const rainPct     = weather ? Math.round((weather.rain_intensity ?? 0) * 100) : 0;
-  const isStorm     = weather?.is_storm ?? false;
-  const weatherDesc = isStorm ? 'Storm' : rainPct > 60 ? 'Heavy Rain' : rainPct > 20 ? 'Rain' : 'Clear';
-  const weatherColor = isStorm || rainPct > 60 ? '#f85149' : rainPct > 20 ? '#d29922' : '#3fb950';
+function StatusStrip({ graphSource, weather, latency, metrics }) {
+  const rainPct = Math.round((weather?.rain_intensity ?? 0) * 100);
+  const weatherLabel = weather?.is_storm
+    ? 'Storm'
+    : rainPct >= 60
+      ? 'Heavy Rain'
+      : rainPct >= 20
+        ? 'Rain'
+        : 'Clear';
 
   return (
     <div className="status-strip">
-      <div className="strip-item">
-        <span className="strip-dot" style={{ background: graphColor }} />
-        <span style={{ color: graphColor }}>{graphLabel}</span>
-      </div>
-
-      <div className="strip-item">
-        <span className="strip-dot" style={{ background: weatherColor }} />
-        <span>Weather: </span>
-        <span style={{ color: weatherColor }}>{weatherDesc} ({rainPct}%)</span>
-      </div>
-
-      <div className="strip-item">
-        <span className="strip-dot" style={{ background: '#a371f7' }} />
-        <span>Model: STGCN active</span>
-        {latency != null && (
-          <span style={{ color: '#c9d1d9' }}>, {latency} ms, {MODEL_SIZE_MB} MB</span>
-        )}
-      </div>
-
-      <div className="strip-item">
-        <span className="strip-dot" style={{ background: routingMode === 'AI' ? '#58a6ff' : '#8b949e' }} />
-        <span style={{ color: routingMode === 'AI' ? '#58a6ff' : '#8b949e' }}>
-          {routingMode === 'AI' ? 'AI Routing Active' : 'Baseline Mode'}
-        </span>
-      </div>
+      <span>{graphSource === 'osm' ? 'OSM graph active' : 'Synthetic graph fallback'}</span>
+      <span>Weather: {weatherLabel} ({rainPct}%)</span>
+      <span>Latency: {latency ?? '--'} ms</span>
+      <span>Time saved: {metrics?.time_saved_min ?? 0} min</span>
+      <span>Fuel saved: {metrics?.fuel_saved_l ?? 0} L</span>
     </div>
   );
 }
 
+function Toggle({ label, active, onClick }) {
+  return (
+    <button
+      type="button"
+      className={active ? 'toggle-chip active' : 'toggle-chip'}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 function App() {
-  const { data, status } = useWebSocket('ws://localhost:8000/ws');
+  const { data, status } = useWebSocket(wsUrl('/ws'));
   const [routingMode, setRoutingMode] = useState('AI');
-  const [weather, setWeather]         = useState(null);
+  const [viewMode, setViewMode] = useState('2D');
+  const [weather, setWeather] = useState(null);
 
-  // Poll /api/weather every 60 seconds
   useEffect(() => {
-    const fetchWeather = () => {
-      fetch('http://localhost:8000/api/weather')
-        .then((r) => r.json())
-        .then((d) => setWeather(d))
-        .catch(() => {});
-    };
-    fetchWeather();
-    const interval = setInterval(fetchWeather, 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Sync weather from WebSocket payload on every tick (faster than polling)
-  useEffect(() => {
-    if (data && data.weather) {
+    if (data?.weather) {
       setWeather(data.weather);
     }
   }, [data]);
 
-  const graphSource    = data?.graph_source ?? 'synthetic';
-  const containerClass = data?.state?.frozen ? 'dashboard-container screen-dim' : 'dashboard-container';
+  const vehicles = data?.vehicles ?? [];
+  const metrics = data?.state?.business_metrics;
 
   return (
-    <div className={containerClass}>
-      {/* Top navigation bar */}
+    <div className={`dashboard-shell ${data?.state?.frozen ? 'screen-dim' : ''}`}>
       <header className="top-bar">
-        <h1>VayuRoute Edge | Predictive Logistics Engine</h1>
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+        <div>
+          <p className="eyebrow">Chief AI Architect Console</p>
+          <h1>VayuRoute Edge Unified Logistics Intelligence</h1>
+        </div>
+
+        <div className="top-actions">
+          <div className="toggle-group">
+            <Toggle label="2D Map" active={viewMode === '2D'} onClick={() => setViewMode('2D')} />
+            <Toggle label="3D Simulation" active={viewMode === '3D'} onClick={() => setViewMode('3D')} />
+          </div>
+
+          <div className="toggle-group">
+            <Toggle label="AI View" active={routingMode === 'AI'} onClick={() => setRoutingMode('AI')} />
+            <Toggle
+              label="Baseline View"
+              active={routingMode === 'BASELINE'}
+              onClick={() => setRoutingMode('BASELINE')}
+            />
+          </div>
+
           <span className={`status-badge ${status === 'online' ? 'status-online' : 'status-offline'}`}>
-            {status === 'online' ? 'System Online' : 'Status: Offline Mode Active'}
+            {status === 'online' ? 'Realtime Stream Online' : 'Waiting for Backend'}
           </span>
-          <span style={{ color: '#8b949e', fontWeight: 600 }}>
-            Latency: {data ? data.latency_ms : '--'}ms
-          </span>
-          <select
-            value={routingMode}
-            onChange={(e) => setRoutingMode(e.target.value)}
-            style={{
-              padding: '0.4rem',
-              borderRadius: '4px',
-              background: 'rgba(33, 38, 45, 0.8)',
-              color: 'white',
-              border: '1px solid #30363d',
-            }}
-          >
-            <option value="BASELINE">Baseline Logistics Array</option>
-            <option value="AI">VayuRoute Prediction Array</option>
-          </select>
         </div>
       </header>
 
-      {/* Slim one-line system status strip */}
       <StatusStrip
-        graphSource={graphSource}
+        graphSource={data?.graph_source}
         weather={weather}
         latency={data?.latency_ms}
-        routingMode={routingMode}
+        metrics={metrics}
       />
 
-      <div className="main-layout">
-        <section className="map-section">
-          <LiveMap data={data} routingMode={routingMode} />
+      <main className="app-shell">
+        <section className="visual-column">
+          <div className="hero-panel">
+            <div className="hero-toolbar">
+              <div>
+                <h2>{viewMode === '2D' ? 'Mumbai Route Intelligence' : '3D Truck Movement'}</h2>
+                <p className="panel-copy">
+                  {viewMode === '2D'
+                    ? 'Risk heatmaps, live route divergence, and current fleet position.'
+                    : 'Truck movement synchronized to backend telemetry and Cloudtrack load profiles.'}
+                </p>
+              </div>
+              <div className="hero-stats">
+                <div>
+                  <span className="hero-stat-label">Active Vehicles</span>
+                  <strong>{vehicles.length}</strong>
+                </div>
+                <div>
+                  <span className="hero-stat-label">Scenario</span>
+                  <strong>{data?.state?.event ?? 'normal'}</strong>
+                </div>
+                <div>
+                  <span className="hero-stat-label">Model</span>
+                  <strong>STGCN + DQN</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="hero-stage">
+              {viewMode === '2D' ? (
+                <LiveMap data={data} routingMode={routingMode} />
+              ) : (
+                <Suspense fallback={<div className="empty-state">Loading 3D simulation...</div>}>
+                  <TruckSimulation3D data={data} routingMode={routingMode} />
+                </Suspense>
+              )}
+            </div>
+          </div>
+
+          <VehicleTelemetryPanel vehicles={vehicles} />
         </section>
 
-        <section className="panels-section" style={{ minWidth: '400px' }}>
-          {data && <BusinessImpact metrics={data.state.business_metrics} />}
-          {data && <RouteBuilder nodes={data.nodes} />}
-
+        <aside className="sidebar">
+          <RouteBuilder nodes={data?.nodes} vehicles={vehicles} />
+          <BusinessImpact metrics={metrics} />
           <ControlPanel />
-
-          {/* CostFunctionPanel renders live defaults even before first dispatch */}
-          <CostFunctionPanel
-            v1_ai={data?.vehicles?.[0]?.ai}
+          <DeltaComparison data={data} routingMode={routingMode} />
+          <DecisionIntelligence data={data} routingMode={routingMode} />
+          <CostFunctionPanel v1_ai={vehicles[0]?.ai} weather={weather} />
+          <RouteAlternatives v1_ai={vehicles[0]?.ai} />
+          <TimelineSlider currentHorizon={data?.state?.horizon ?? 45} />
+          <PerformancePanel
+            latency={data?.latency_ms}
+            graphSource={data?.graph_source}
+            modelSizeMb={MODEL_SIZE_MB}
             weather={weather}
           />
-
-          {data && (
-            <>
-              <DeltaComparison data={data} routingMode={routingMode} />
-              <RouteAlternatives v1_ai={data.vehicles[0].ai} />
-              <DecisionIntelligence data={data} routingMode={routingMode} />
-              <TimelineSlider currentHorizon={data.state.horizon} />
-              <SystemLog logs={data.state.logs} />
-              <PerformancePanel
-                latency={data.latency_ms}
-                graphSource={graphSource}
-                modelSizeMb={MODEL_SIZE_MB}
-                weather={weather}
-              />
-            </>
-          )}
-        </section>
-      </div>
+          <SystemLog logs={data?.state?.logs ?? []} />
+        </aside>
+      </main>
     </div>
   );
 }

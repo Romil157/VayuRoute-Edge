@@ -1,38 +1,44 @@
 import React from 'react';
 
 export default function BusinessImpact({ metrics }) {
-  if (!metrics) return null;
+  if (!metrics) {
+    return null;
+  }
 
   return (
-    <div className="glass-panel" style={{ borderLeft: '4px solid #3fb950' }}>
-      <h2 style={{ color: '#c9d1d9' }}>Business Impact ROI</h2>
-      
-      <div className="stat-row">
-        <span className="stat-label">System Cost Saved:</span>
-        <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#3fb950', textShadow: '0 0 10px rgba(63,185,80,0.4)' }}>
-            ₹ {metrics.cost_saved.toLocaleString()}
-        </span>
-      </div>
-      
-      <div className="stat-row">
-        <span className="stat-label">Network Efficiency Delta:</span>
-        <span style={{ color: '#58a6ff', fontWeight: 600 }}>
-            +{metrics.efficiency_percentage}%
-        </span>
+    <div className="glass-panel">
+      <h2>Operations Impact</h2>
+
+      <div className="impact-grid">
+        <div className="impact-tile">
+          <span className="impact-label">Cost Delta</span>
+          <strong>INR {metrics.cost_saved.toLocaleString()}</strong>
+        </div>
+        <div className="impact-tile">
+          <span className="impact-label">Time Saved</span>
+          <strong>{metrics.time_saved_min} min</strong>
+        </div>
+        <div className="impact-tile">
+          <span className="impact-label">Fuel Saved</span>
+          <strong>{metrics.fuel_saved_l} L</strong>
+        </div>
+        <div className="impact-tile">
+          <span className="impact-label">Efficiency</span>
+          <strong>{metrics.efficiency_percentage}%</strong>
+        </div>
       </div>
 
       <div className="stat-row">
-        <span className="stat-label">SLA Breaches Prevented:</span>
-        <span style={{ color: '#a371f7', fontWeight: 600 }}>
-            {metrics.sla_breached_baseline} Deliveries
-        </span>
+        <span className="stat-label">Fleet Load Utilization</span>
+        <span>{metrics.fleet_load_utilization}%</span>
       </div>
-      
       <div className="stat-row">
-        <span className="stat-label">Deliveries En-Route:</span>
-        <span style={{ color: '#c9d1d9', fontWeight: 600 }}>
-            {metrics.deliveries_completed} Active
-        </span>
+        <span className="stat-label">Dispatches Issued</span>
+        <span>{metrics.dispatch_count}</span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Completed Deliveries</span>
+        <span>{metrics.deliveries_completed}</span>
       </div>
     </div>
   );

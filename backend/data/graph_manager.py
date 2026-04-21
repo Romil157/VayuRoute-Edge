@@ -12,7 +12,7 @@ import pickle
 import networkx as nx
 
 # ---------------------------------------------------------------------------
-# OSM bounding box — Andheri-Kurla corridor
+# OSM bounding box - Andheri-Kurla corridor
 # ---------------------------------------------------------------------------
 OSM_NORTH = 19.130
 OSM_SOUTH = 19.060
@@ -28,6 +28,7 @@ FLOOD_ZONES = [
     (19.0402, 72.8553, "Dharavi"),
 ]
 FLOOD_RISK_RADIUS_DEG = 0.012   # ~1.3 km at Mumbai latitude
+EDGE_FLOOD_RADIUS_DEG = 0.022   # lets corridor edges inherit nearby flood exposure
 
 
 def _haversine_km(lat1, lng1, lat2, lng2):
@@ -47,8 +48,34 @@ def _flood_risk_base(lat, lng):
     return 0.0
 
 
+def _point_to_segment_distance_deg(px, py, ax, ay, bx, by):
+    abx = bx - ax
+    aby = by - ay
+    if abx == 0 and aby == 0:
+        return math.sqrt((px - ax) ** 2 + (py - ay) ** 2)
+
+    t = ((px - ax) * abx + (py - ay) * aby) / (abx ** 2 + aby ** 2)
+    t = max(0.0, min(1.0, t))
+    closest_x = ax + abx * t
+    closest_y = ay + aby * t
+    return math.sqrt((px - closest_x) ** 2 + (py - closest_y) ** 2)
+
+
+def _edge_flood_risk_base(start_lat, start_lng, end_lat, end_lng):
+    max_risk = max(
+        _flood_risk_base(start_lat, start_lng),
+        _flood_risk_base(end_lat, end_lng),
+    )
+    for flat, flng, _ in FLOOD_ZONES:
+        dist = _point_to_segment_distance_deg(flat, flng, start_lat, start_lng, end_lat, end_lng)
+        if dist < EDGE_FLOOD_RADIUS_DEG:
+            proximity = 1.0 - (dist / EDGE_FLOOD_RADIUS_DEG)
+            max_risk = max(max_risk, round(0.25 + proximity * 0.75, 3))
+    return min(1.0, max_risk)
+
+
 # ---------------------------------------------------------------------------
-# Named anchor nodes — keep same letters as synthetic graph so simulator works
+# Named anchor nodes - keep same letters as synthetic graph so simulator works
 # ---------------------------------------------------------------------------
 ANCHOR_NODES = {
     "A": (19.1197, 72.8464),  # Andheri Station
@@ -200,11 +227,18 @@ class GraphManager:
                     travel_min = round((length_m / 1000.0) / 30.0 * 60.0, 1)
                     # Only add edges for adjacent-ish nodes
                     if travel_min <= 40:
+                        edge_flood_risk = _edge_flood_risk_base(
+                            ANCHOR_NODES[u_letter][0],
+                            ANCHOR_NODES[u_letter][1],
+                            ANCHOR_NODES[v_letter][0],
+                            ANCHOR_NODES[v_letter][1],
+                        )
                         self.graph.add_edge(u_letter, v_letter,
                             weight=travel_min,
                             base_weight=travel_min,
                             distance_m=round(length_m, 0),
                             current_risk=0.0,
+                            flood_risk_base=edge_flood_risk,
                             speed_kmh=30)
                 except Exception:
                     pass
@@ -229,11 +263,18 @@ class GraphManager:
         ]
         for u, v, w in SYNTHETIC_EDGES:
             if not self.graph.has_edge(u, v):
+                edge_flood_risk = _edge_flood_risk_base(
+                    ANCHOR_NODES[u][0],
+                    ANCHOR_NODES[u][1],
+                    ANCHOR_NODES[v][0],
+                    ANCHOR_NODES[v][1],
+                )
                 self.graph.add_edge(u, v,
                     weight=w,
                     base_weight=w,
                     distance_m=w * 500,
                     current_risk=0.0,
+                    flood_risk_base=edge_flood_risk,
                     speed_kmh=30)
         # Set flood_risk_base on any nodes added implicitly
         for n in self.graph.nodes():
@@ -244,7 +285,7 @@ class GraphManager:
                 self.graph.nodes[n]["flood_risk_current"] = frb
 
     def _build_synthetic_graph(self):
-        """Original 18-node synthetic Mumbai graph — offline fallback."""
+        """Original 18-node synthetic Mumbai graph - offline fallback."""
         self.graph_source = "synthetic"
         for letter, (lat, lng) in ANCHOR_NODES.items():
             frb = _flood_risk_base(lat, lng)
@@ -266,11 +307,18 @@ class GraphManager:
             ("P", "Q", 4),  ("P", "R", 10), ("Q", "R", 12),
         ]
         for u, v, w in edges:
+            edge_flood_risk = _edge_flood_risk_base(
+                ANCHOR_NODES[u][0],
+                ANCHOR_NODES[u][1],
+                ANCHOR_NODES[v][0],
+                ANCHOR_NODES[v][1],
+            )
             self.graph.add_edge(u, v,
                 weight=w,
                 base_weight=w,
                 distance_m=w * 500,
                 current_risk=0.0,
+                flood_risk_base=edge_flood_risk,
                 speed_kmh=30)
         print("[GraphManager] Synthetic 18-node graph loaded (offline fallback).")
 
@@ -280,6 +328,21 @@ class GraphManager:
 
     def get_nodes(self):
         return {n: dict(self.graph.nodes[n]) for n in self.graph.nodes()}
+
+    def get_node(self, node_id):
+        return dict(self.graph.nodes[node_id]) if node_id in self.graph.nodes else None
+
+    def resolve_node_id(self, value):
+        if not value:
+            return None
+        if value in self.graph.nodes:
+            return value
+
+        normalized = str(value).strip().lower()
+        for node_id, attrs in self.graph.nodes(data=True):
+            if attrs.get("name", "").strip().lower() == normalized:
+                return node_id
+        return None
 
     def extract_subgraph_nodes(self, selected_node_ids):
         if not selected_node_ids:
@@ -302,17 +365,59 @@ class GraphManager:
         node_set = set(valid_nodes)
         for u, v, data in self.graph.edges(data=True):
             if u in node_set and v in node_set:
+                node_risk = max(
+                    self.graph.nodes[u].get("flood_risk_current", 0.0),
+                    self.graph.nodes[v].get("flood_risk_current", 0.0),
+                )
+                flood_risk = max(
+                    float(data.get("current_risk", 0.0)),
+                    float(data.get("flood_risk_base", 0.0)) * 100.0,
+                    float(node_risk) * 100.0,
+                )
                 result.append({
                     "source": u,
                     "target": v,
                     "weight": data["weight"],
                     "base_weight": data["base_weight"],
-                    "risk": data["current_risk"],
+                    "risk": round(flood_risk, 2),
                 })
         return result
 
     def get_edges(self):
         return self.extract_subgraph_edges(list(self.graph.nodes()))
+
+    def get_edge_details(self, source, target):
+        if not self.graph.has_edge(source, target):
+            return None
+        data = self.graph[source][target]
+        return {
+            "source": source,
+            "target": target,
+            "distance_m": float(data.get("distance_m", data.get("base_weight", 0) * 500)),
+            "base_weight": float(data.get("base_weight", data.get("weight", 0))),
+            "weight": float(data.get("weight", data.get("base_weight", 0))),
+            "risk": float(max(
+                data.get("current_risk", 0.0),
+                data.get("flood_risk_base", 0.0) * 100.0,
+                self.graph.nodes[source].get("flood_risk_current", 0.0) * 100.0,
+                self.graph.nodes[target].get("flood_risk_current", 0.0) * 100.0,
+            )),
+            "speed_kmh": float(data.get("speed_kmh", 30.0)),
+        }
+
+    def path_to_coordinates(self, path):
+        coordinates = []
+        for node_id in path:
+            node = self.get_node(node_id)
+            if not node:
+                continue
+            coordinates.append({
+                "node": node_id,
+                "name": node.get("name", node_id),
+                "lat": float(node["lat"]),
+                "lng": float(node["lng"]),
+            })
+        return coordinates
 
     def get_baseline_route(self, start, end, stops=None):
         stops = stops or []
@@ -366,11 +471,26 @@ class GraphManager:
 
     def boost_flood_nodes(self, boost=0.4):
         """
-        Increase flood_risk_current on all nodes that have a non-zero
-        flood_risk_base. Called when rain_intensity exceeds 0.6.
+        Synchronise flood_risk_current with the current rain intensity.
+        This keeps the risk signal stable across ticks instead of
+        compounding indefinitely while the weather remains unchanged.
         """
         for n, data in self.graph.nodes(data=True):
             base = data.get("flood_risk_base", 0.0)
-            if base > 0:
-                current = data.get("flood_risk_current", base)
-                self.graph.nodes[n]["flood_risk_current"] = min(1.0, current + boost)
+            weather_boost = boost if base > 0 else 0.0
+            self.graph.nodes[n]["flood_risk_current"] = min(1.0, base + weather_boost)
+
+    def sync_weather_risk(self, rain_intensity):
+        weather_boost = 0.0
+        if rain_intensity > 0.6:
+            weather_boost = 0.4
+        elif rain_intensity > 0.2:
+            weather_boost = 0.2
+
+        for n, data in self.graph.nodes(data=True):
+            base = data.get("flood_risk_base", 0.0)
+            self.graph.nodes[n]["flood_risk_current"] = min(1.0, base + (weather_boost if base > 0 else 0.0))
+
+        for _, _, data in self.graph.edges(data=True):
+            edge_base = float(data.get("flood_risk_base", 0.0)) * 100.0
+            data["current_risk"] = round(min(100.0, edge_base + weather_boost * 60.0), 2)

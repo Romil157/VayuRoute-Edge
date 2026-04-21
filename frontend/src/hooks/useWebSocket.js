@@ -1,43 +1,54 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function useWebSocket(url) {
   const [data, setData] = useState(null);
   const [status, setStatus] = useState('offline');
-  const ws = useRef(null);
+  const socketRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const closedRef = useRef(false);
 
   useEffect(() => {
+    closedRef.current = false;
+
+    const connect = () => {
+      const socket = new WebSocket(url);
+      socketRef.current = socket;
+
+      socket.onopen = () => {
+        setStatus('online');
+      };
+
+      socket.onmessage = (event) => {
+        setData(JSON.parse(event.data));
+      };
+
+      socket.onerror = () => {
+        setStatus('offline');
+      };
+
+      socket.onclose = () => {
+        setStatus('offline');
+        if (closedRef.current) {
+          return;
+        }
+        reconnectTimerRef.current = window.setTimeout(connect, 2000);
+      };
+    };
+
     connect();
+
     return () => {
-      if (ws.current) ws.current.close();
+      closedRef.current = true;
+      window.clearTimeout(reconnectTimerRef.current);
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
     };
   }, [url]);
 
-  const connect = () => {
-    ws.current = new WebSocket(url);
-    
-    ws.current.onopen = () => {
-      setStatus('online');
-    };
-    
-    ws.current.onclose = () => {
-      setStatus('offline');
-      // Reconnect after 2 seconds
-      setTimeout(() => connect(), 2000);
-    };
-    
-    ws.current.onmessage = (event) => {
-      const parsed = JSON.parse(event.data);
-      setData(parsed);
-    };
-    
-    ws.current.onerror = () => {
-      setStatus('offline');
-    };
-  };
-
   const send = (message) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(JSON.stringify(message));
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify(message));
     }
   };
 

@@ -5,6 +5,7 @@ networkx
 torch
 numpy
 osmnx
+pandas
 requests
 scipy
 shapely

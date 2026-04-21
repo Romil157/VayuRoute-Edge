@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { apiUrl } from '../lib/api';
 
-const BASE = 'http://localhost:8000';
+const BASE = apiUrl('');
 
 export default function ControlPanel() {
   const [status, setStatus] = useState('');
@@ -66,7 +67,7 @@ export default function ControlPanel() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
         <button className="btn-primary" onClick={() => triggerEvent('normal')}>
-          Initialize / Clear Events
+          Reset Scenario
         </button>
         <button onClick={() => triggerEvent('rain')}>
           Trigger Rain Module
@@ -90,7 +91,7 @@ export default function ControlPanel() {
             padding: '1rem'
           }}
         >
-          START 60s TURBO DEMO
+          Start Demo Sequence
         </button>
       </div>
     </div>

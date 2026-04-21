@@ -1,98 +1,111 @@
-import asyncio
 from datetime import datetime
+
 
 class Simulator:
     def __init__(self):
+        self.tick_seconds = 0.5
         self.reset()
-        
-    def reset(self):
-        # Multi-vehicle support
-        # active_path: current path being traversed
-        # path_idx: current index in the path
-        # V1: Andheri East corridor (F=WEH Hub) -> Kurla side (G=Bandra Kurla Complex)
-        # V2: Andheri Station (A) -> SV Road Junction (B) — short corridor loop
-        self.vehicles = [
-            {"id": "V1", "pos": "F", "target": "G", "fuel": 100, "stops": [], "active_path": [], "path_idx": 0},
-            {"id": "V2", "pos": "A", "target": "B", "fuel": 80,  "stops": [], "active_path": [], "path_idx": 0},
-        ]
 
-        self.active_event = "normal"
-        self.pause_duration = 0
-        self.horizon_mins = 45
-        self.logs = ["[System] Predictive ROI logistics simulation online."]
-        
-        self.business_metrics = {
-            "cost_saved": 0,
-            "deliveries_completed": 0,
-            "sla_breached_baseline": 0,
-            "efficiency_percentage": 0.0,
-            "total_ai_time": 0,
-            "total_baseline_time": 0
+    def _vehicle(self, vehicle_id, label, color, start, target, fuel):
+        return {
+            "id": vehicle_id,
+            "label": label,
+            "color": color,
+            "pos": start,
+            "target": target,
+            "fuel": float(fuel),
+            "fuel_capacity_l": 120.0,
+            "stops": [],
+            "active_route": "ai",
+            "dirty_route": True,
+            "arrival_logged": False,
         }
+
+    def reset(self):
+        self.vehicles = [
+            self._vehicle("V1", "Monsoon-01", "#58a6ff", "A", "J", 100),
+            self._vehicle("V2", "Harbor-02", "#f59e0b", "B", "Q", 82),
+        ]
+        self.active_event = "normal"
+        self.pause_ticks = 0
+        self.horizon_mins = 45
+        self.logs = ["[System] Unified logistics intelligence platform online."]
+        self.dispatch_count = 0
+        self.deliveries_completed = 0
         self.tick_counter = 0
+
+    @property
+    def is_frozen(self):
+        return self.pause_ticks > 0
 
     def log(self, message):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.logs.insert(0, f"[{timestamp}] {message}")
-        if len(self.logs) > 10:
+        if len(self.logs) > 18:
             self.logs.pop()
 
-    def get_state(self):
-        return {
-            "vehicles": self.vehicles,
-            "event": self.active_event,
-            "frozen": self.pause_duration > 0,
-            "logs": self.logs,
-            "horizon": self.horizon_mins,
-            "business_metrics": self.business_metrics
-        }
+    def dispatch_routes(self, assignments, graph_manager):
+        vehicle_map = {vehicle["id"]: vehicle for vehicle in self.vehicles}
+        for assignment in assignments:
+            vehicle_id = assignment.get("vehicle_id", "V1")
+            if vehicle_id not in vehicle_map:
+                continue
 
-    def set_custom_route(self, route_payload):
-        self.vehicles[0]["pos"] = route_payload.get("start", "C")
-        self.vehicles[0]["target"] = route_payload.get("end", "R")
-        self.vehicles[0]["stops"] = route_payload.get("stops", [])
-        self.vehicles[0]["active_path"] = [] # Reset path traversal
-        self.vehicles[0]["path_idx"] = 0
-        self.log(f"Fleet Dispatch: V1 route updated.")
-        self.business_metrics["deliveries_completed"] += 1
+            vehicle = vehicle_map[vehicle_id]
+            start = graph_manager.resolve_node_id(assignment.get("start")) or vehicle["pos"]
+            end = graph_manager.resolve_node_id(assignment.get("end")) or vehicle["target"]
 
-    def update_active_path(self, vehicle_id, path):
-        for v in self.vehicles:
-            if v["id"] == vehicle_id:
-                # Only update if path changed or we are empty
-                if v["active_path"] != path:
-                    v["active_path"] = path
-                    v["path_idx"] = 0
+            stops = []
+            for stop in assignment.get("stops", []):
+                stop_id = graph_manager.resolve_node_id(stop.get("id"))
+                if not stop_id or stop_id in {start, end}:
+                    continue
+                stops.append({
+                    "id": stop_id,
+                    "priority": stop.get("priority", "Medium"),
+                    "deadline_mins": int(stop.get("deadline_mins", 60)),
+                })
+
+            vehicle["pos"] = start
+            vehicle["target"] = end
+            vehicle["stops"] = stops
+            vehicle["fuel"] = float(assignment.get("fuel", vehicle["fuel"]))
+            vehicle["dirty_route"] = True
+            vehicle["arrival_logged"] = False
+            self.dispatch_count += 1
+            self.log(
+                f"Dispatch updated for {vehicle_id}: "
+                f"{graph_manager.get_node(start)['name']} -> {graph_manager.get_node(end)['name']} "
+                f"({len(stops)} stop(s))."
+            )
+
+    def mark_arrival(self, vehicle_id):
+        self.deliveries_completed += 1
+        self.log(f"{vehicle_id} reached destination.")
 
     def trigger_event(self, event_type, value=None):
         if event_type == "timeline":
             self.horizon_mins = int(value)
+            self.log(f"Prediction horizon updated to {self.horizon_mins} min.")
             return
-        if event_type == "low_fuel":
-            self.vehicles[0]["fuel"] = 15
-            self.log("Emergency: Low Fuel Triggered.")
-            self.pause_duration = 2
-            return
+
         self.active_event = event_type
-        self.log(f"Alert: {event_type.upper()} event started.")
-        self.pause_duration = 2
+        self.pause_ticks = 2
+
+        if event_type == "low_fuel":
+            for vehicle in self.vehicles:
+                vehicle["fuel"] = min(vehicle["fuel"], 15.0)
+                vehicle["dirty_route"] = True
+            self.log("Fleet fuel reserve dropped into critical range.")
+            return
+
+        if event_type == "normal":
+            self.log("Network reset to nominal conditions.")
+            return
+
+        self.log(f"Scenario injected: {event_type.upper()}.")
 
     def step(self):
-        if self.pause_duration > 0:
-            self.pause_duration -= 1
-            return
-        
         self.tick_counter += 1
-        
-        for v in self.vehicles:
-            v["fuel"] = max(0, round(v["fuel"] - 0.2, 2))
-            
-            # Move vehicle every 3 ticks (~1.5s per node) for a fast-paced demo
-            if v["active_path"] and len(v["active_path"]) > 1:
-                if self.tick_counter % 3 == 0:
-                    v["path_idx"] = min(v["path_idx"] + 1, len(v["active_path"]) - 1)
-                    v["pos"] = v["active_path"][v["path_idx"]]
-                    
-                    if v["pos"] == v["target"]:
-                        v["active_path"] = [] # Destination reached
-                        self.log(f"Unit {v['id']} arrived at Target.")
+        if self.pause_ticks > 0:
+            self.pause_ticks -= 1

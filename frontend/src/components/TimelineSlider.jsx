@@ -1,9 +1,10 @@
 import React from 'react';
+import { apiUrl } from '../lib/api';
 
 export default function TimelineSlider({ currentHorizon }) {
   const setTimeline = async (val) => {
     try {
-      await fetch(`http://localhost:8000/timeline/${val}`, { method: 'POST' });
+      await fetch(apiUrl(`/timeline/${val}`), { method: 'POST' });
     } catch (e) {}
   };
 

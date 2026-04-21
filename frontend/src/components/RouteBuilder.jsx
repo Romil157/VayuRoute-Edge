@@ -1,98 +1,245 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { apiUrl } from '../lib/api';
 
-export default function RouteBuilder({ nodes }) {
-  // Default route: Andheri East area (F = WEH Hub) to Kurla corridor (G = Bandra Kurla Complex)
-  const [start, setStart] = useState("F");
-  const [end, setEnd]     = useState("G");
+const BASE_URL = apiUrl('');
 
-  const [stops, setStops] = useState([]);
-  
-  const addStop = () => {
-      if (stops.length >= 6) return; 
-      setStops([...stops, { id: "L", priority: "Medium", deadline_mins: 60 }]);
+function emptyStop(defaultId) {
+  return { id: defaultId, priority: 'Medium', deadline_mins: 60 };
+}
+
+export default function RouteBuilder({ nodes, vehicles }) {
+  const [assignments, setAssignments] = useState([]);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    if (!nodes || !vehicles || assignments.length > 0) {
+      return;
+    }
+
+    setAssignments(
+      vehicles.map((vehicle) => ({
+        vehicle_id: vehicle.id,
+        start: vehicle.pos,
+        end: vehicle.target,
+        fuel: vehicle.fuel,
+        stops: vehicle.stops?.length ? vehicle.stops : [],
+      })),
+    );
+  }, [assignments.length, nodes, vehicles]);
+
+  if (!nodes || !vehicles) {
+    return null;
+  }
+
+  const locationOptions = Object.entries(nodes).map(([id, node]) => ({
+    id,
+    name: node.name,
+  }));
+
+  const defaultStopId = locationOptions[0]?.id ?? 'A';
+
+  const updateAssignment = (vehicleId, patch) => {
+    setAssignments((current) =>
+      current.map((assignment) =>
+        assignment.vehicle_id === vehicleId ? { ...assignment, ...patch } : assignment,
+      ),
+    );
   };
 
-  const removeStop = (idx) => {
-      const newStops = [...stops];
-      newStops.splice(idx, 1);
-      setStops(newStops);
-  };
-  
-  const updateStop = (idx, field, value) => {
-      const newStops = [...stops];
-      newStops[idx][field] = field === 'deadline_mins' ? parseInt(value) : value;
-      setStops(newStops);
+  const updateStop = (vehicleId, stopIndex, field, value) => {
+    setAssignments((current) =>
+      current.map((assignment) => {
+        if (assignment.vehicle_id !== vehicleId) {
+          return assignment;
+        }
+        const nextStops = assignment.stops.map((stop, index) =>
+          index === stopIndex
+            ? {
+                ...stop,
+                [field]: field === 'deadline_mins' ? Number(value) : value,
+              }
+            : stop,
+        );
+        return { ...assignment, stops: nextStops };
+      }),
+    );
   };
 
-  const submitRoute = async () => {
+  const addStop = (vehicleId) => {
+    setAssignments((current) =>
+      current.map((assignment) =>
+        assignment.vehicle_id === vehicleId
+          ? { ...assignment, stops: [...assignment.stops, emptyStop(defaultStopId)] }
+          : assignment,
+      ),
+    );
+  };
+
+  const removeStop = (vehicleId, stopIndex) => {
+    setAssignments((current) =>
+      current.map((assignment) =>
+        assignment.vehicle_id === vehicleId
+          ? {
+              ...assignment,
+              stops: assignment.stops.filter((_, index) => index !== stopIndex),
+            }
+          : assignment,
+      ),
+    );
+  };
+
+  const submitRoutes = async () => {
+    setStatus('Dispatching fleet...');
     try {
-      await fetch(`http://localhost:8000/set_route`, { 
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start, end, stops })
+      const response = await fetch(`${BASE_URL}/api/routes/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignments }),
       });
-    } catch (e) {
-      console.error(e);
+      if (!response.ok) {
+        setStatus(`Dispatch failed (${response.status})`);
+        return;
+      }
+      setStatus('Fleet dispatch updated');
+    } catch (error) {
+      setStatus(`Dispatch failed: ${error.message}`);
     }
   };
 
-  if (!nodes) return null;
-  const locList = Object.keys(nodes).map(key => ({ id: key, name: nodes[key].name }));
-
   return (
-    <div className="glass-panel" style={{ borderLeft: '4px solid #58a6ff' }}>
-      <h2>Dynamic Route Builder</h2>
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-          <div>
-              <span className="stat-label">Origin Facility:</span>
-              <select value={start} onChange={e => setStart(e.target.value)} style={{ width: '100%', padding: '0.4rem', marginTop: '0.2rem', background: '#0d1117', color: 'white', border: '1px solid #30363d' }}>
-                  {locList.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+    <div className="glass-panel">
+      <h2>Fleet Dispatch Console</h2>
+      <p className="panel-copy">
+        Configure each truck independently, then push one synchronized dispatch to the backend.
+      </p>
+
+      {status && <div className="inline-status">{status}</div>}
+
+      <div className="route-builder-grid">
+        {assignments.map((assignment) => (
+          <div key={assignment.vehicle_id} className="subpanel">
+            <div className="subpanel-header">
+              <strong>{assignment.vehicle_id}</strong>
+              <span>{vehicles.find((vehicle) => vehicle.id === assignment.vehicle_id)?.truck_profile?.truck_name ?? 'Awaiting Cloudtrack profile'}</span>
+            </div>
+
+            <label className="field-label">
+              Start
+              <select
+                value={assignment.start}
+                onChange={(event) =>
+                  updateAssignment(assignment.vehicle_id, { start: event.target.value })
+                }
+              >
+                {locationOptions.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
               </select>
-          </div>
-          
-          <div style={{ background: 'rgba(33, 38, 45, 0.3)', padding: '0.5rem', borderRadius: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <span className="stat-label">Delivery Stops ({stops.length}/6):</span>
-                  <button onClick={addStop} style={{ width: 'auto', padding: '0.2rem 0.6rem', fontSize: '0.75rem', background: 'rgba(88,166,255,0.2)' }}>+ Add</button>
-              </div>
-              
-              {stops.map((stop, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.8rem', paddingBottom: '0.8rem', borderBottom: '1px solid rgba(48,54,61,0.5)' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <select value={stop.id} onChange={e => updateStop(i, 'id', e.target.value)} style={{ flex: 1, padding: '0.3rem', background: '#0d1117', color: 'white', border: '1px solid #30363d' }}>
-                              {locList.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                          <button onClick={() => removeStop(i)} style={{ width: '30px', padding: 0, background: 'rgba(218, 54, 51, 0.2)', color: '#ff7b72' }}>X</button>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <select value={stop.priority} onChange={e => updateStop(i, 'priority', e.target.value)} style={{ flex: 1, padding: '0.3rem', background: '#0d1117', color: 'white', border: '1px solid #30363d' }}>
-                              <option value="High">High Priority</option>
-                              <option value="Medium">Med Priority</option>
-                              <option value="Low">Low Priority</option>
-                          </select>
-                          <select value={stop.deadline_mins} onChange={e => updateStop(i, 'deadline_mins', e.target.value)} style={{ flex: 1, padding: '0.3rem', background: '#0d1117', color: 'white', border: '1px solid #30363d' }}>
-                              <option value="30">SLA: +30m</option>
-                              <option value="45">SLA: +45m</option>
-                              <option value="60">SLA: +60m</option>
-                              <option value="90">SLA: +90m</option>
-                          </select>
-                      </div>
+            </label>
+
+            <label className="field-label">
+              Destination
+              <select
+                value={assignment.end}
+                onChange={(event) =>
+                  updateAssignment(assignment.vehicle_id, { end: event.target.value })
+                }
+              >
+                {locationOptions.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field-label">
+              Starting Fuel (%)
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={assignment.fuel}
+                onChange={(event) =>
+                  updateAssignment(assignment.vehicle_id, { fuel: Number(event.target.value) })
+                }
+              />
+            </label>
+
+            <div className="stops-header">
+              <span>Stops ({assignment.stops.length})</span>
+              <button type="button" onClick={() => addStop(assignment.vehicle_id)}>
+                Add Stop
+              </button>
+            </div>
+
+            <div className="stops-stack">
+              {assignment.stops.map((stop, index) => (
+                <div key={`${assignment.vehicle_id}-stop-${index}`} className="stop-card">
+                  <div className="stop-card-row">
+                    <select
+                      value={stop.id}
+                      onChange={(event) =>
+                        updateStop(assignment.vehicle_id, index, 'id', event.target.value)
+                      }
+                    >
+                      {locationOptions.map((location) => (
+                        <option key={location.id} value={location.id}>
+                          {location.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => removeStop(assignment.vehicle_id, index)}
+                    >
+                      Remove
+                    </button>
                   </div>
+
+                  <div className="stop-card-row">
+                    <select
+                      value={stop.priority}
+                      onChange={(event) =>
+                        updateStop(assignment.vehicle_id, index, 'priority', event.target.value)
+                      }
+                    >
+                      <option value="High">High Priority</option>
+                      <option value="Medium">Medium Priority</option>
+                      <option value="Low">Low Priority</option>
+                    </select>
+
+                    <select
+                      value={stop.deadline_mins}
+                      onChange={(event) =>
+                        updateStop(
+                          assignment.vehicle_id,
+                          index,
+                          'deadline_mins',
+                          event.target.value,
+                        )
+                      }
+                    >
+                      <option value="30">SLA +30m</option>
+                      <option value="45">SLA +45m</option>
+                      <option value="60">SLA +60m</option>
+                      <option value="90">SLA +90m</option>
+                      <option value="120">SLA +120m</option>
+                    </select>
+                  </div>
+                </div>
               ))}
+            </div>
           </div>
-          
-          <div>
-              <span className="stat-label">Target Terminus:</span>
-              <select value={end} onChange={e => setEnd(e.target.value)} style={{ width: '100%', padding: '0.4rem', marginTop: '0.2rem', background: '#0d1117', color: 'white', border: '1px solid #30363d' }}>
-                  {locList.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-              </select>
-          </div>
-          
-          <button className="btn-primary" onClick={submitRoute} style={{ marginTop: '0.5rem' }}>
-            Dispatch Logistics Fleet
-          </button>
+        ))}
       </div>
+
+      <button className="btn-primary" type="button" onClick={submitRoutes}>
+        Dispatch All Vehicles
+      </button>
     </div>
   );
 }

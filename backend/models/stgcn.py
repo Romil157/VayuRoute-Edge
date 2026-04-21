@@ -1,5 +1,5 @@
 """
-stgcn.py  —  Spatio-Temporal Graph Convolutional Network (2-layer)
+stgcn.py  -  Spatio-Temporal Graph Convolutional Network (2-layer)
 
 Architecture:
     Layer 1 (Spatial):  nn.Linear over node features weighted by adjacency matrix
@@ -124,7 +124,7 @@ class PredictionService:
             _ = self.model(dummy_x, dummy_adj)
             elapsed_ms = (time.time() - t0) * 1000
         assert elapsed_ms < MAX_INFERENCE_MS, (
-            f"STGCN inference took {elapsed_ms:.1f} ms — exceeds {MAX_INFERENCE_MS} ms limit."
+            f"STGCN inference took {elapsed_ms:.1f} ms - exceeds {MAX_INFERENCE_MS} ms limit."
         )
         print(f"[STGCN] Inference latency: {elapsed_ms:.1f} ms (limit: {MAX_INFERENCE_MS} ms).")
 
@@ -215,24 +215,25 @@ class PredictionService:
         for e in graph_edges:
             si = idx.get(e["source"], 0)
             ti = idx.get(e["target"], 0)
+            local_risk = float(e["risk"])
 
             # Average per-node predictions to get per-edge values
             node_cost_delta = float((pred_cost[si] + pred_cost[ti]) / 2.0)
             node_risk_delta = float((pred_risk[si] + pred_risk[ti]) / 2.0)
 
             p_weight = e["base_weight"]
-            p_risk   = 0.0
+            p_risk   = max(0.0, local_risk * 0.35)
 
-            # Rule-based overlay (deterministic, event-aware)
+            # Rule-based overlay (deterministic, event-aware and topology-aware)
             if event_state in ("rain", "light_rain"):
-                p_risk   = 35.0 * multiplier
-                p_weight = e["base_weight"] + 5.0 * multiplier
+                p_risk   = min(100.0, local_risk * 0.75 + 18.0 * multiplier)
+                p_weight = e["base_weight"] + 2.5 * multiplier + (local_risk / 100.0) * 4.0
             elif event_state == "heavy_rain":
-                p_risk   = 60.0 * multiplier
-                p_weight = e["base_weight"] + 12.0 * multiplier
+                p_risk   = min(100.0, local_risk * 0.95 + 32.0 * multiplier)
+                p_weight = e["base_weight"] + 6.0 * multiplier + (local_risk / 100.0) * 9.0
             elif event_state == "flood":
-                p_risk   = 85.0 * multiplier
-                p_weight = e["base_weight"] + 20.0 * multiplier
+                p_risk   = min(100.0, local_risk * 1.15 + 42.0 * multiplier)
+                p_weight = e["base_weight"] + 9.0 * multiplier + (local_risk / 100.0) * 16.0
 
             # Blend STGCN deltas (clamped to avoid negative weights)
             p_weight = max(1.0, p_weight + node_cost_delta * multiplier)
