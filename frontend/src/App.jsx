@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import BusinessImpact from './components/BusinessImpact';
 import ControlPanel from './components/ControlPanel';
 import CostFunctionPanel from './components/CostFunctionPanel';
@@ -19,6 +19,14 @@ import { apiUrl, wsUrl } from './lib/api';
 const MODEL_SIZE_MB = 0.02;
 const TruckSimulation3D = lazy(() => import('./components/TruckSimulation3D'));
 
+const SCENARIO_LABELS = {
+  normal: 'Clear',
+  rain: 'Rain',
+  heavy_rain: 'Heavy Rain',
+  flood: 'Flood',
+  low_fuel: 'Low Fuel',
+};
+
 function StatusStrip({ graphSource, weather, latency, metrics, liveWeather }) {
   const rainPct = Math.round((weather?.rain_intensity ?? 0) * 100);
   const weatherLabel = weather?.is_storm
@@ -35,7 +43,7 @@ function StatusStrip({ graphSource, weather, latency, metrics, liveWeather }) {
       <span>Sim Weather: {weatherLabel} ({rainPct}%)</span>
       {liveWeather && !liveWeather.loading && (
         <span>
-          Live Mumbai: {liveWeather.condition} {liveWeather.temperature}°C
+          Live Mumbai: {liveWeather.condition} {liveWeather.temperature} C
           {liveWeather.rain_mm > 0 ? ` | ${liveWeather.rain_mm}mm rain` : ''}
         </span>
       )}
@@ -58,109 +66,115 @@ function Toggle({ label, active, onClick }) {
   );
 }
 
-// Speed multiplier per scenario
-const SPEED_MULTIPLIERS = {
-  normal: 1.0,
-  rain: 0.7,
-  heavy_rain: 0.5,
-  flood: 0.4,
-  low_fuel: 0.82,
-};
-
-// Scenario display labels
-const SCENARIO_LABELS = {
-  normal: 'Clear',
-  rain: '🌧️ Rain',
-  heavy_rain: '⛈️ Heavy Rain',
-  flood: '🌊 Flood',
-  low_fuel: '⛽ Low Fuel',
-};
-
 function App() {
   const { data, status } = useWebSocket(wsUrl('/ws'));
   const [routingMode, setRoutingMode] = useState('AI');
   const [viewMode, setViewMode] = useState('2D');
-  const [weather, setWeather] = useState(null);
   const [demoOverlay, setDemoOverlay] = useState('');
-
-  // ── Demo state machine ──
-  const [demoState, setDemoState] = useState('setup'); // 'setup' | 'flyIn' | 'live'
+  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [vehicleMapControls, setVehicleMapControls] = useState({});
+  const [demoState, setDemoState] = useState('setup');
   const [flyInDone, setFlyInDone] = useState(false);
-
-  // ── Scenario state (drives speed + visuals) ──
   const [scenario, setScenario] = useState('normal');
-  const speedMultiplier = SPEED_MULTIPLIERS[scenario] || 1.0;
 
-  // ── Live weather from OpenWeatherMap ──
   const liveWeather = useMumbaiWeather();
+  const weather = data?.weather ?? null;
+  const vehicles = useMemo(() => data?.vehicles ?? [], [data?.vehicles]);
+  const metrics = data?.state?.business_metrics;
+  const vehicleControlState = useMemo(
+    () =>
+      Object.fromEntries(
+        vehicles.map((vehicle) => [
+          vehicle.id,
+          vehicleMapControls[vehicle.id] || { paused: false, resetToken: 0 },
+        ]),
+      ),
+    [vehicleMapControls, vehicles],
+  );
 
-  useEffect(() => {
-    if (data?.weather) {
-      setWeather(data.weather);
-    }
-  }, [data]);
-
-  // ── Scenario selection handler (from setup modal) ──
   const handleScenarioSelect = useCallback(async (selectedScenario) => {
     setDemoState('flyIn');
     setFlyInDone(false);
     setScenario(selectedScenario === 'normal' ? 'normal' : selectedScenario);
 
-    // Trigger the scenario on the backend
     try {
       await fetch(apiUrl(`/trigger/${selectedScenario}`), { method: 'POST' });
     } catch {
-      // Backend might not be up yet — that's fine
+      // Backend might not be up yet.
     }
   }, []);
 
-  // ── Fly-in completion callback ──
   const handleFlyInComplete = useCallback(() => {
     setFlyInDone(true);
   }, []);
 
-  // ── Start simulation ──
   const handleStartSimulation = useCallback(() => {
     setDemoState('live');
   }, []);
 
-  // ── Control panel: scenario change ──
-  const handleScenarioChange = useCallback((newScenario) => {
-    setScenario(newScenario);
+  const handleScenarioChange = useCallback((nextScenario) => {
+    setScenario(nextScenario);
   }, []);
 
-  // ── Control panel: start demo sequence ──
   const handleStartDemo = useCallback(() => {
-    // If we're in setup, go through flyIn first
     if (demoState === 'setup') {
       setDemoState('flyIn');
       setFlyInDone(false);
-      // Auto-transition to live after fly-in
-      setTimeout(() => setDemoState('live'), 4000);
-    } else {
-      // Already past setup, just ensure we're live
-      setDemoState('live');
+      window.setTimeout(() => setDemoState('live'), 4000);
+      return;
     }
+
+    setDemoState('live');
   }, [demoState]);
 
-  const vehicles = data?.vehicles ?? [];
-  const metrics = data?.state?.business_metrics;
+  const handleMapFullscreenChange = useCallback((nextFullscreen) => {
+    setIsMapFullscreen(nextFullscreen);
+  }, []);
 
-  // ── Scenario label: show active scenario + live weather ──
+  const handlePauseVehicle = useCallback((vehicleId) => {
+    setVehicleMapControls((current) => ({
+      ...current,
+      [vehicleId]: {
+        ...(current[vehicleId] || { resetToken: 0 }),
+        paused: true,
+      },
+    }));
+  }, []);
+
+  const handleResumeVehicle = useCallback((vehicleId) => {
+    setVehicleMapControls((current) => ({
+      ...current,
+      [vehicleId]: {
+        ...(current[vehicleId] || { resetToken: 0 }),
+        paused: false,
+      },
+    }));
+  }, []);
+
+  const handleResetVehicle = useCallback((vehicleId) => {
+    setVehicleMapControls((current) => {
+      const existing = current[vehicleId] || { paused: false, resetToken: 0 };
+      return {
+        ...current,
+        [vehicleId]: {
+          paused: false,
+          resetToken: existing.resetToken + 1,
+        },
+      };
+    });
+  }, []);
+
   const activeScenarioLabel = SCENARIO_LABELS[scenario] || 'Clear';
   const liveWeatherText = liveWeather && !liveWeather.loading && !liveWeather.error
-    ? `${liveWeather.condition} ${liveWeather.temperature}°C`
+    ? `${liveWeather.condition} ${liveWeather.temperature} C`
     : '';
   const scenarioLabel = liveWeatherText
-    ? `${activeScenarioLabel} · ${liveWeatherText}`
+    ? `${activeScenarioLabel} | ${liveWeatherText}`
     : activeScenarioLabel;
 
   return (
     <div className={`dashboard-shell ${data?.state?.frozen ? 'screen-dim' : ''}`}>
-      {/* ── Setup Modal ── */}
-      {demoState === 'setup' && (
-        <DemoSetupModal onSelect={handleScenarioSelect} />
-      )}
+      {demoState === 'setup' && <DemoSetupModal onSelect={handleScenarioSelect} />}
 
       <header className="top-bar">
         <div>
@@ -171,7 +185,11 @@ function App() {
         <div className="top-actions">
           <div className="toggle-group">
             <Toggle label="2D Map" active={viewMode === '2D'} onClick={() => setViewMode('2D')} />
-            <Toggle label="3D Simulation" active={viewMode === '3D'} onClick={() => setViewMode('3D')} />
+            <Toggle
+              label="3D Simulation"
+              active={viewMode === '3D'}
+              onClick={() => setViewMode('3D')}
+            />
           </div>
 
           <div className="toggle-group">
@@ -197,7 +215,7 @@ function App() {
         liveWeather={liveWeather}
       />
 
-      <main className="app-shell">
+      <main className={isMapFullscreen ? 'app-shell map-focus' : 'app-shell'}>
         <section className="visual-column">
           <div className="hero-panel">
             <div className="hero-toolbar">
@@ -209,6 +227,7 @@ function App() {
                     : 'Truck movement synchronized to backend telemetry and Cloudtrack load profiles.'}
                 </p>
               </div>
+
               <div className="hero-stats">
                 <div>
                   <span className="hero-stat-label">Active Vehicles</span>
@@ -226,16 +245,13 @@ function App() {
             </div>
 
             <div className="hero-stage">
-              {demoOverlay && (
-                <div className="demo-overlay">{demoOverlay}</div>
-              )}
+              {demoOverlay && <div className="demo-overlay">{demoOverlay}</div>}
 
-              {/* ── Start Simulation Button (visible after fly-in) ── */}
               {demoState === 'flyIn' && flyInDone && (
                 <div className="start-sim-overlay">
-                  <button className="start-sim-btn" onClick={handleStartSimulation}>
-                    <span className="start-sim-icon">▶</span>
-                    Start Simulation
+                  <button className="start-sim-btn" type="button" onClick={handleStartSimulation}>
+                    <span className="start-sim-icon">Start</span>
+                    Simulation
                   </button>
                 </div>
               )}
@@ -247,7 +263,8 @@ function App() {
                   demoState={demoState}
                   onFlyInComplete={handleFlyInComplete}
                   scenario={scenario}
-                  speedMultiplier={speedMultiplier}
+                  onFullscreenChange={handleMapFullscreenChange}
+                  vehicleControls={vehicleControlState}
                 />
               ) : (
                 <Suspense fallback={<div className="empty-state">Loading 3D simulation...</div>}>
@@ -260,13 +277,18 @@ function App() {
           <VehicleTelemetryPanel vehicles={vehicles} />
         </section>
 
-        <aside className="sidebar">
+        <aside className={isMapFullscreen ? 'sidebar sidebar-hidden' : 'sidebar'}>
           <RouteBuilder nodes={data?.nodes} vehicles={vehicles} />
           <BusinessImpact metrics={metrics} />
           <ControlPanel
             onDemoOverlay={setDemoOverlay}
             onScenarioChange={handleScenarioChange}
             onStartDemo={handleStartDemo}
+            vehicles={vehicles}
+            vehicleControls={vehicleControlState}
+            onPauseVehicle={handlePauseVehicle}
+            onResumeVehicle={handleResumeVehicle}
+            onResetVehicle={handleResetVehicle}
           />
           <DeltaComparison data={data} routingMode={routingMode} />
           <DecisionIntelligence data={data} routingMode={routingMode} />

@@ -155,9 +155,13 @@ button:hover {
 .app-shell {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) 350px;
   gap: 1.25rem;
   padding: 0 1.8rem 1.8rem;
+}
+
+.app-shell.map-focus {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .visual-column,
@@ -177,6 +181,12 @@ button:hover {
   gap: 1rem;
   overflow-y: auto;
   padding-right: 0.2rem;
+  width: 350px;
+  max-width: 350px;
+}
+
+.sidebar-hidden {
+  display: none;
 }
 
 .hero-panel,
@@ -234,6 +244,7 @@ button:hover {
 .hero-stage {
   flex: 1;
   min-height: 420px;
+  position: relative;
 }
 
 .glass-panel {
@@ -296,7 +307,7 @@ button:hover {
 }
 
 .route-builder-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   margin-bottom: 0.95rem;
 }
 
@@ -388,6 +399,22 @@ button:hover {
   color: #ffc0bd;
 }
 
+.panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.panel-actions button {
+  width: 100%;
+}
+
+.panel-divider {
+  height: 1px;
+  margin: 0.2rem 0;
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .stat-row {
   display: flex;
   justify-content: space-between;
@@ -410,9 +437,33 @@ button:hover {
   border-color: rgba(58, 179, 216, 0.36);
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .btn-danger {
   background: rgba(239, 100, 97, 0.14);
   border-color: rgba(239, 100, 97, 0.3);
+}
+
+.btn-highlight {
+  background: rgba(255, 171, 0, 0.18);
+  color: #ffb347;
+  border-color: rgba(255, 171, 0, 0.45);
+  font-size: 1rem;
+  padding: 1rem;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button:disabled:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .telemetry-panel {
@@ -478,10 +529,40 @@ button:hover {
   height: 100%;
   width: 100%;
   position: relative;
+  overflow: hidden;
 }
 
 .map-shell .leaflet-container {
   background: #071018;
+}
+
+.map-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 650;
+  display: flex;
+  gap: 0.65rem;
+}
+
+.map-toolbar-button {
+  width: auto;
+  min-width: 170px;
+}
+
+.fullscreen-map {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 999;
+  border-radius: 0;
+}
+
+.map-alert-text {
+  color: #ef4444;
+  font-weight: 700;
 }
 
 .event-overlay {
@@ -549,6 +630,66 @@ button:hover {
   color: #cddae2;
 }
 
+.control-status {
+  margin-bottom: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  color: #00e5ff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.control-status-error {
+  color: #ff8f8d;
+}
+
+.vehicle-controls-section {
+  margin-top: 1rem;
+}
+
+.vehicle-controls-copy {
+  margin-bottom: 0.85rem;
+}
+
+.vehicle-control-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.vehicle-control-card {
+  padding: 0.9rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.vehicle-control-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.vehicle-control-header strong {
+  font-size: 0.92rem;
+}
+
+.vehicle-control-header span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.vehicle-control-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.vehicle-control-actions button {
+  width: 100%;
+}
+
 .slider-container input[type='range'] {
   width: 100%;
   accent-color: var(--accent);
@@ -570,13 +711,15 @@ button:hover {
   }
 }
 
-@media (max-width: 1300px) {
+@media (max-width: 1100px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
 
   .sidebar {
     overflow: visible;
+    width: auto;
+    max-width: none;
   }
 
   .route-builder-grid,
@@ -609,6 +752,10 @@ button:hover {
 
   .impact-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .vehicle-control-actions {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -5,7 +5,9 @@ export default function TimelineSlider({ currentHorizon }) {
   const setTimeline = async (val) => {
     try {
       await fetch(apiUrl(`/timeline/${val}`), { method: 'POST' });
-    } catch (e) {}
+    } catch {
+      // Keep the slider responsive even if the backend is temporarily unavailable.
+    }
   };
 
   return (

@@ -1,75 +1,90 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
-import { MapContainer, Marker, Polyline, TileLayer, Tooltip, useMap, CircleMarker } from 'react-leaflet';
+import {
+  CircleMarker,
+  MapContainer,
+  Marker,
+  Polyline,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useOSRMRoutes } from '../hooks/useOSRMRoutes';
 
-// ─── Haversine distance in km between two [lat, lng] points ─────────────────
 function haversineKm(a, b) {
-  const R = 6371;
-  const toRad = (d) => (d * Math.PI) / 180;
+  const radiusKm = 6371;
+  const toRad = (degrees) => (degrees * Math.PI) / 180;
   const dLat = toRad(b[0] - a[0]);
   const dLng = toRad(b[1] - a[1]);
   const sin2 =
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(sin2));
+  return radiusKm * 2 * Math.asin(Math.sqrt(sin2));
 }
 
-// ─── Compute cumulative distances along a polyline ──────────────────────────
 function cumulativeDistances(positions) {
-  const dists = [0];
-  for (let i = 1; i < positions.length; i++) {
-    dists.push(dists[i - 1] + haversineKm(positions[i - 1], positions[i]));
+  const distances = [0];
+  for (let index = 1; index < positions.length; index += 1) {
+    distances.push(distances[index - 1] + haversineKm(positions[index - 1], positions[index]));
   }
-  return dists;
+  return distances;
 }
 
-// ─── Interpolate a point at a given distance along the polyline ─────────────
-function interpolateAlongPolyline(positions, cumDists, targetKm) {
-  if (!positions.length) return null;
-  if (targetKm <= 0) return { pos: positions[0], segIdx: 0 };
-  const totalDist = cumDists[cumDists.length - 1];
-  if (targetKm >= totalDist) return { pos: positions[positions.length - 1], segIdx: positions.length - 2 };
-
-  // Binary search for the segment
-  let lo = 0;
-  let hi = cumDists.length - 1;
-  while (lo < hi - 1) {
-    const mid = (lo + hi) >> 1;
-    if (cumDists[mid] <= targetKm) lo = mid;
-    else hi = mid;
+function interpolateAlongPolyline(positions, cumulative, targetKm) {
+  if (!positions.length) {
+    return null;
+  }
+  if (targetKm <= 0) {
+    return { pos: positions[0], segIdx: 0 };
   }
 
-  const segLen = cumDists[hi] - cumDists[lo];
-  const ratio = segLen > 0 ? (targetKm - cumDists[lo]) / segLen : 0;
+  const totalDistance = cumulative[cumulative.length - 1];
+  if (targetKm >= totalDistance) {
+    return { pos: positions[positions.length - 1], segIdx: Math.max(0, positions.length - 2) };
+  }
 
-  const a = positions[lo];
-  const b = positions[hi];
+  let low = 0;
+  let high = cumulative.length - 1;
+  while (low < high - 1) {
+    const mid = (low + high) >> 1;
+    if (cumulative[mid] <= targetKm) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+
+  const segmentLength = cumulative[high] - cumulative[low];
+  const ratio = segmentLength > 0 ? (targetKm - cumulative[low]) / segmentLength : 0;
+  const start = positions[low];
+  const end = positions[high];
+
   return {
-    pos: [a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio],
-    segIdx: lo,
+    pos: [
+      start[0] + (end[0] - start[0]) * ratio,
+      start[1] + (end[1] - start[1]) * ratio,
+    ],
+    segIdx: low,
   };
 }
 
-// ─── Bearing computation ────────────────────────────────────────────────────
 function computeBearing(from, to) {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const toDeg = (r) => (r * 180) / Math.PI;
+  const toRad = (degrees) => (degrees * Math.PI) / 180;
+  const toDeg = (radians) => (radians * 180) / Math.PI;
 
   const lat1 = toRad(from[0]);
   const lat2 = toRad(to[0]);
-  const dLng = toRad(to[1] - from[1]);
+  const deltaLng = toRad(to[1] - from[1]);
 
-  const x = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.sin(deltaLng) * Math.cos(lat2);
   const y =
     Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(deltaLng);
 
   return (toDeg(Math.atan2(x, y)) + 360) % 360;
 }
 
-// ─── Build a rotated vehicle DivIcon ────────────────────────────────────────
 function createVehicleIcon(color, bearing) {
   const rotation = Math.round(bearing);
   return L.divIcon({
@@ -108,7 +123,63 @@ function createVehicleIcon(color, bearing) {
   });
 }
 
-// ─── Fly-to controller ──────────────────────────────────────────────────────
+function projectPointOnSegment(point, start, end) {
+  const vx = end[1] - start[1];
+  const vy = end[0] - start[0];
+  const wx = point[1] - start[1];
+  const wy = point[0] - start[0];
+  const lengthSquared = vx * vx + vy * vy;
+  const t = lengthSquared === 0 ? 0 : Math.max(0, Math.min(1, (wx * vx + wy * vy) / lengthSquared));
+
+  const projected = [
+    start[0] + (end[0] - start[0]) * t,
+    start[1] + (end[1] - start[1]) * t,
+  ];
+
+  return {
+    t,
+    position: projected,
+    distanceKm: haversineKm(point, projected),
+  };
+}
+
+function projectPointOnPolyline(point, positions, cumulative) {
+  if (!point || positions.length < 2 || cumulative.length < 2) {
+    return 0;
+  }
+
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestKm = 0;
+
+  for (let index = 0; index < positions.length - 1; index += 1) {
+    const start = positions[index];
+    const end = positions[index + 1];
+    const projection = projectPointOnSegment(point, start, end);
+    if (projection.distanceKm < bestDistance) {
+      bestDistance = projection.distanceKm;
+      bestKm = cumulative[index] + haversineKm(start, projection.position);
+    }
+  }
+
+  return bestKm;
+}
+
+function fallbackTargetKm(vehicle, positions, cumulative) {
+  const totalRouteKm = cumulative[cumulative.length - 1] || 0;
+  const routeProgress = Number(vehicle?.telemetry?.route_progress ?? 0);
+
+  if (totalRouteKm > 0 && Number.isFinite(routeProgress)) {
+    return totalRouteKm * Math.max(0, Math.min(100, routeProgress)) / 100;
+  }
+
+  const backendCoordinate = vehicle?.telemetry?.coordinate;
+  if (backendCoordinate) {
+    return projectPointOnPolyline([backendCoordinate.lat, backendCoordinate.lng], positions, cumulative);
+  }
+
+  return 0;
+}
+
 function MapController({ demoState, onFlyInComplete }) {
   const map = useMap();
   const hasFiredRef = useRef(false);
@@ -116,205 +187,99 @@ function MapController({ demoState, onFlyInComplete }) {
   useEffect(() => {
     if (demoState === 'flyIn' && !hasFiredRef.current) {
       hasFiredRef.current = true;
-
-      // Start from a wide overview
       map.setView([19.0, 72.8], 10, { animate: false });
 
-      // Fly into Mumbai center
-      setTimeout(() => {
+      const flyInTimer = window.setTimeout(() => {
         map.flyTo([19.06, 72.86], 13, { duration: 3 });
-
-        // Notify parent when the animation finishes
-        setTimeout(() => {
-          if (onFlyInComplete) onFlyInComplete();
-        }, 3200);
       }, 300);
+
+      const doneTimer = window.setTimeout(() => {
+        if (onFlyInComplete) {
+          onFlyInComplete();
+        }
+      }, 3500);
+
+      return () => {
+        window.clearTimeout(flyInTimer);
+        window.clearTimeout(doneTimer);
+      };
     }
 
-    // Reset if we go back to setup
     if (demoState === 'setup') {
       hasFiredRef.current = false;
       map.setView([19.0, 72.8], 10, { animate: false });
     }
+
+    return undefined;
   }, [demoState, map, onFlyInComplete]);
 
   return null;
 }
 
-// ─── Main component ─────────────────────────────────────────────────────────
-export default function LiveMap({ data, routingMode, demoState, onFlyInComplete, scenario, speedMultiplier }) {
-  if (!data?.nodes || !data?.vehicles) {
-    return <div className="empty-state">Awaiting Mumbai telemetry stream...</div>;
-  }
+function MapResizeController({ isFullscreen }) {
+  const map = useMap();
 
-  const { nodes, vehicles, state } = data;
-
-  // ── OSRM road snapping ──
-  const snappedRoutes = useOSRMRoutes(vehicles, nodes, routingMode);
-
-  // ── Client-side polyline animation state ──
-  // Stores { [vehicleId]: { km: number, arrived: boolean } }
-  const [animProgress, setAnimProgress] = useState({});
-  const animRef = useRef(null);
-  const lastTickRef = useRef(Date.now());
-  const speedMultRef = useRef(speedMultiplier ?? 1.0);
-
-  // Keep the speed multiplier ref in sync with props — NO position reset
   useEffect(() => {
-    speedMultRef.current = speedMultiplier ?? 1.0;
-  }, [speedMultiplier]);
-
-  // ── Precompute route totals for arrival detection in the animation loop ──
-  const routeTotalsRef = useRef({});
-  useEffect(() => {
-    const totals = {};
-    for (const vehicle of vehicles) {
-      const snapped = snappedRoutes[vehicle.id];
-      const positions = routingMode === 'AI'
-        ? (snapped?.ai || fallbackPositions(vehicle.ai, nodes))
-        : (snapped?.baseline || fallbackPositions(vehicle.baseline, nodes));
-      if (positions.length >= 2) {
-        const cumDists = cumulativeDistances(positions);
-        totals[vehicle.id] = cumDists[cumDists.length - 1];
-      }
-    }
-    routeTotalsRef.current = totals;
-  }, [vehicles, snappedRoutes, routingMode, nodes]);
-
-  // ── Animation loop ──
-  useEffect(() => {
-    const isLive = !demoState || demoState === 'live';
-    if (!isLive) {
-      // Paused — don't animate
-      if (animRef.current) cancelAnimationFrame(animRef.current);
-      lastTickRef.current = Date.now();
-      return;
-    }
-
-    function tick() {
-      const now = Date.now();
-      const dt = (now - lastTickRef.current) / 1000; // seconds
-      lastTickRef.current = now;
-
-      setAnimProgress((prev) => {
-        const next = { ...prev };
-        for (const vehicle of vehicles) {
-          const entry = next[vehicle.id] || { km: 0, arrived: false };
-
-          // If already arrived, skip — don't keep calculating
-          if (entry.arrived) {
-            next[vehicle.id] = entry;
-            continue;
-          }
-
-          const backendSpeed = vehicle.telemetry?.speed_kmh || 0;
-          if (backendSpeed <= 0) {
-            next[vehicle.id] = entry;
-            continue;
-          }
-
-          // Apply scenario speed multiplier and time-scale for visible movement
-          const effectiveSpeed = backendSpeed * speedMultRef.current;
-          const distDelta = (effectiveSpeed / 3600) * dt * 180; // 180x time scale
-
-          let newKm = entry.km + distDelta;
-
-          // Terminal check: has the vehicle reached the end of the route?
-          const routeTotal = routeTotalsRef.current[vehicle.id] || Infinity;
-          let arrived = false;
-          if (routeTotal - newKm < 0.05) {
-            // Snap to end, mark as arrived
-            newKm = routeTotal;
-            arrived = true;
-          }
-
-          next[vehicle.id] = { km: newKm, arrived };
-        }
-        return next;
-      });
-
-      animRef.current = requestAnimationFrame(tick);
-    }
-
-    lastTickRef.current = Date.now();
-    animRef.current = requestAnimationFrame(tick);
+    const resizeTimer = window.setTimeout(() => {
+      map.invalidateSize();
+    }, 180);
 
     return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current);
+      window.clearTimeout(resizeTimer);
     };
-  }, [demoState, vehicles]);
+  }, [isFullscreen, map]);
 
-  // ── Reset progress ONLY on explicit reset, not on scenario changes ──
+  return null;
+}
+
+export default function LiveMap({
+  data,
+  routingMode,
+  demoState,
+  onFlyInComplete,
+  scenario,
+  onFullscreenChange,
+  vehicleControls = {},
+}) {
+  const nodes = data?.nodes;
+  const vehicles = useMemo(() => data?.vehicles ?? [], [data?.vehicles]);
+  const state = data?.state;
+  const snappedRoutes = useOSRMRoutes(vehicles, nodes, routingMode);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [displayProgress, setDisplayProgress] = useState({});
+  const routeMetaRef = useRef([]);
+  const vehicleControlsRef = useRef(vehicleControls);
+  const routeKeysRef = useRef({});
+  const appliedResetTokensRef = useRef({});
+
   useEffect(() => {
-    if (scenario === 'reset') {
-      setAnimProgress({});
+    vehicleControlsRef.current = vehicleControls;
+  }, [vehicleControls]);
+
+  useEffect(() => {
+    if (onFullscreenChange) {
+      onFullscreenChange(isFullscreen);
     }
-    // 'rain', 'flood', 'low_fuel', 'normal' do NOT reset — only speed changes
-  }, [scenario]);
+  }, [isFullscreen, onFullscreenChange]);
 
-  // ── Pre-compute all route + marker data ──
-  const renderData = useMemo(() => {
-    return vehicles.map((vehicle) => {
+  useEffect(() => () => {
+    if (onFullscreenChange) {
+      onFullscreenChange(false);
+    }
+  }, [onFullscreenChange]);
+
+  const routeMeta = useMemo(() => (
+    vehicles.map((vehicle) => {
       const snapped = snappedRoutes[vehicle.id];
-
-      // Use OSRM-snapped positions if available, fall back to raw coordinates
       const aiPositions = snapped?.ai || fallbackPositions(vehicle.ai, nodes);
       const baselinePositions = snapped?.baseline || fallbackPositions(vehicle.baseline, nodes);
       const activePositions = routingMode === 'AI' ? aiPositions : baselinePositions;
-
-      const diverged =
-        vehicle.baseline.path.join('>') !== vehicle.ai.path.join('>') &&
-        vehicle.baseline.path.length > 1;
-
-      // ── Snap vehicle marker to the OSRM polyline ──
-      let markerPos = null;
-      let bearing = 0;
-      const backendCoord = vehicle.telemetry?.coordinate;
-
-      const animEntry = animProgress[vehicle.id] || { km: 0, arrived: false };
-      const hasArrived = animEntry.arrived;
-
-      if (activePositions.length >= 2) {
-        const cumDists = cumulativeDistances(activePositions);
-        const totalRouteKm = cumDists[cumDists.length - 1];
-        const travelledKm = animEntry.km;
-
-        // Clamp to route length
-        const clampedKm = Math.min(travelledKm, totalRouteKm);
-        const interp = interpolateAlongPolyline(activePositions, cumDists, clampedKm);
-
-        if (interp) {
-          markerPos = interp.pos;
-
-          // Bearing: point toward the next waypoint on the polyline
-          const nextIdx = Math.min(interp.segIdx + 1, activePositions.length - 1);
-          bearing = computeBearing(interp.pos, activePositions[nextIdx]);
-        } else if (backendCoord) {
-          markerPos = [backendCoord.lat, backendCoord.lng];
-        }
-
-      } else if (backendCoord) {
-        markerPos = [backendCoord.lat, backendCoord.lng];
-      }
-
-      // ── ETA: compute from client-side polyline distance, not backend ──
-      const speed = vehicle.telemetry?.speed_kmh || 0;
-      const effectiveSpeed = speed * (speedMultiplier ?? 1.0);
-      let etaMinutes = 0;
-
-      if (hasArrived) {
-        // Explicitly zero — vehicle is at destination
-        etaMinutes = 0;
-      } else if (activePositions.length >= 2 && effectiveSpeed > 0) {
-        const cumDists = cumulativeDistances(activePositions);
-        const totalRouteKm = cumDists[cumDists.length - 1];
-        const clientRemaining = Math.max(0, totalRouteKm - animEntry.km);
-        if (clientRemaining < 0.05) {
-          etaMinutes = 0;
-        } else {
-          etaMinutes = Math.round((clientRemaining / effectiveSpeed) * 60);
-        }
-      }
+      const cumulative = activePositions.length >= 2 ? cumulativeDistances(activePositions) : [0];
+      const totalRouteKm = cumulative[cumulative.length - 1] || 0;
+      const targetKm = activePositions.length >= 2
+        ? fallbackTargetKm(vehicle, activePositions, cumulative)
+        : 0;
+      const activePath = routingMode === 'AI' ? vehicle.ai?.path : vehicle.baseline?.path;
 
       return {
         id: vehicle.id,
@@ -322,28 +287,217 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
         aiPositions,
         baselinePositions,
         activePositions,
-        diverged,
+        diverged:
+          vehicle.baseline.path.join('>') !== vehicle.ai.path.join('>') &&
+          vehicle.baseline.path.length > 1,
         ai: vehicle.ai,
         baseline: vehicle.baseline,
         telemetry: vehicle.telemetry,
+        cumulative,
+        totalRouteKm,
+        targetKm,
+        routeKey: `${routingMode}:${activePath?.join('>') || vehicle.id}`,
+      };
+    })
+  ), [nodes, routingMode, snappedRoutes, vehicles]);
+
+  useEffect(() => {
+    routeMetaRef.current = routeMeta;
+  }, [routeMeta]);
+
+  useEffect(() => {
+    setDisplayProgress((current) => {
+      let changed = false;
+      const next = {};
+      const activeIds = new Set(routeMeta.map((meta) => meta.id));
+
+      for (const meta of routeMeta) {
+        const previousKm = current[meta.id];
+        const previousRouteKey = routeKeysRef.current[meta.id];
+        const routeRestarted = typeof previousKm === 'number' && meta.targetKm + 0.05 < previousKm;
+        const nextKm =
+          previousRouteKey !== meta.routeKey ||
+          typeof previousKm !== 'number' ||
+          routeRestarted ||
+          previousKm > meta.totalRouteKm + 0.001
+            ? meta.targetKm
+            : previousKm;
+
+        next[meta.id] = nextKm;
+        routeKeysRef.current[meta.id] = meta.routeKey;
+        appliedResetTokensRef.current[meta.id] ??= vehicleControls[meta.id]?.resetToken ?? 0;
+
+        if (nextKm !== previousKm) {
+          changed = true;
+        }
+      }
+
+      for (const vehicleId of Object.keys(routeKeysRef.current)) {
+        if (!activeIds.has(vehicleId)) {
+          delete routeKeysRef.current[vehicleId];
+          delete appliedResetTokensRef.current[vehicleId];
+        }
+      }
+
+      if (Object.keys(current).length !== routeMeta.length) {
+        changed = true;
+      }
+
+      return changed ? next : current;
+    });
+  }, [routeMeta, vehicleControls]);
+
+  useEffect(() => {
+    setDisplayProgress((current) => {
+      let changed = false;
+      const next = { ...current };
+
+      for (const meta of routeMeta) {
+        const resetToken = vehicleControls[meta.id]?.resetToken ?? 0;
+        if ((appliedResetTokensRef.current[meta.id] ?? 0) !== resetToken) {
+          next[meta.id] = 0;
+          appliedResetTokensRef.current[meta.id] = resetToken;
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [routeMeta, vehicleControls]);
+
+  useEffect(() => {
+    if (scenario === 'reset') {
+      setDisplayProgress((current) => {
+        const next = { ...current };
+        for (const meta of routeMetaRef.current) {
+          next[meta.id] = 0;
+        }
+        return next;
+      });
+    }
+  }, [scenario]);
+
+  useEffect(() => {
+    const isLive = !demoState || demoState === 'live';
+    if (!isLive) {
+      return undefined;
+    }
+
+    let frameId = 0;
+    let lastTime = performance.now();
+
+    const tick = (now) => {
+      const dt = Math.max(0.001, (now - lastTime) / 1000);
+      lastTime = now;
+
+      setDisplayProgress((current) => {
+        let changed = false;
+        const next = { ...current };
+
+        for (const meta of routeMetaRef.current) {
+          const currentKm = typeof next[meta.id] === 'number' ? next[meta.id] : meta.targetKm;
+          const controlState = vehicleControlsRef.current[meta.id] || { paused: false };
+          const desiredKm = controlState.paused ? currentKm : meta.targetKm;
+          const diff = desiredKm - currentKm;
+
+          if (Math.abs(diff) <= 0.001) {
+            continue;
+          }
+
+          const easing = 1 - Math.exp(-dt * 6);
+          let updatedKm = currentKm + diff * easing;
+
+          if (diff > 0) {
+            updatedKm = Math.min(updatedKm, desiredKm);
+          } else {
+            updatedKm = Math.max(updatedKm, desiredKm);
+          }
+
+          updatedKm = Math.max(0, Math.min(meta.totalRouteKm, updatedKm));
+
+          if (Math.abs(updatedKm - currentKm) > 0.0005) {
+            next[meta.id] = updatedKm;
+            changed = true;
+          }
+        }
+
+        return changed ? next : current;
+      });
+
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [demoState]);
+
+  const renderData = useMemo(() => (
+    routeMeta.map((meta) => {
+      const displayKm = displayProgress[meta.id] ?? meta.targetKm;
+      const backendCoordinate = meta.telemetry?.coordinate;
+      const controlState = vehicleControls[meta.id] || { paused: false };
+
+      let markerPos = null;
+      let bearing = 0;
+
+      if (meta.activePositions.length >= 2) {
+        const interpolated = interpolateAlongPolyline(meta.activePositions, meta.cumulative, displayKm);
+        if (interpolated) {
+          markerPos = interpolated.pos;
+          const nextIndex = Math.min(interpolated.segIdx + 1, meta.activePositions.length - 1);
+          bearing = computeBearing(interpolated.pos, meta.activePositions[nextIndex]);
+        }
+      } else if (backendCoordinate) {
+        markerPos = [backendCoordinate.lat, backendCoordinate.lng];
+      }
+
+      const remainingKm = Math.max(0, meta.totalRouteKm - displayKm);
+      const speed = controlState.paused ? 0 : Math.round(meta.telemetry?.speed_kmh || 0);
+      const arrived =
+        meta.totalRouteKm > 0
+          ? remainingKm < 0.02 || meta.telemetry?.status === 'Arrived'
+          : meta.telemetry?.status === 'Arrived';
+      const etaMinutes =
+        arrived || speed <= 0
+          ? 0
+          : Math.round((remainingKm / Math.max(speed, 1)) * 60);
+
+      return {
+        ...meta,
         markerPos,
         bearing,
         etaMinutes,
-        hasArrived,
-        speed: Math.round(effectiveSpeed),
+        displayKm,
+        speed,
+        paused: controlState.paused,
+        hasArrived: arrived,
       };
-    });
-  }, [vehicles, nodes, routingMode, snappedRoutes, animProgress, speedMultiplier]);
+    })
+  ), [displayProgress, routeMeta, vehicleControls]);
 
   const isLive = !demoState || demoState === 'live';
   const initialCenter = demoState === 'setup' ? [19.0, 72.8] : [19.06, 72.86];
   const initialZoom = demoState === 'setup' ? 10 : 13;
-
-  // Route color override for flood scenario
   const isFlood = scenario === 'flood';
 
+  if (!nodes || !vehicles.length) {
+    return <div className="empty-state">Awaiting Mumbai telemetry stream...</div>;
+  }
+
   return (
-    <div className="map-shell">
+    <div className={isFullscreen ? 'map-shell fullscreen-map' : 'map-shell'}>
+      <div className="map-toolbar">
+        <button
+          className="btn-secondary map-toolbar-button"
+          type="button"
+          onClick={() => setIsFullscreen((current) => !current)}
+        >
+          {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Map'}
+        </button>
+      </div>
+
       {state?.frozen && <div className="event-overlay">Recomputing under live disruption</div>}
 
       <MapContainer
@@ -357,16 +511,14 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
           attribution="&copy; CARTO"
         />
 
-        {/* Fly-to animation controller */}
         <MapController demoState={demoState} onFlyInComplete={onFlyInComplete} />
+        <MapResizeController isFullscreen={isFullscreen} />
 
-        {/* Route polylines */}
-        {renderData.map((rd) => (
-          <React.Fragment key={rd.id}>
-            {/* Divergence baseline ghost line */}
-            {rd.diverged && routingMode === 'AI' && rd.baselinePositions.length >= 2 && (
+        {renderData.map((vehicle) => (
+          <React.Fragment key={vehicle.id}>
+            {vehicle.diverged && routingMode === 'AI' && vehicle.baselinePositions.length >= 2 && (
               <Polyline
-                positions={rd.baselinePositions}
+                positions={vehicle.baselinePositions}
                 pathOptions={{
                   color: '#f97316',
                   opacity: 0.3,
@@ -377,43 +529,41 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
                 <Tooltip sticky>
                   <div>
                     <strong>Baseline Divergence</strong>
-                    <div>{rd.baseline.rejected_reason}</div>
+                    <div>{vehicle.baseline.rejected_reason}</div>
                   </div>
                 </Tooltip>
               </Polyline>
             )}
 
-            {/* Active route — flood turns it red */}
-            {rd.activePositions.length >= 2 && (
+            {vehicle.activePositions.length >= 2 && (
               <Polyline
-                positions={rd.activePositions}
+                positions={vehicle.activePositions}
                 pathOptions={{
-                  color: isFlood ? '#ef4444' : (routingMode === 'AI' ? rd.color : '#94a3b8'),
+                  color: isFlood ? '#ef4444' : routingMode === 'AI' ? vehicle.color : '#94a3b8',
                   opacity: 0.95,
                   weight: isFlood ? 7 : 6,
                 }}
               >
                 <Tooltip sticky>
                   <div>
-                    <strong>{rd.id}</strong>
+                    <strong>{vehicle.id}</strong>
                     <div>{routingMode === 'AI' ? 'AI route' : 'Baseline route'}</div>
                     <div>
                       {routingMode === 'AI'
-                        ? `${rd.ai.predicted_time} min | ${rd.ai.max_risk}% risk`
-                        : `${rd.baseline.true_time} min`}
+                        ? `${vehicle.ai.predicted_time} min | ${vehicle.ai.max_risk}% risk`
+                        : `${vehicle.baseline.true_time} min`}
                     </div>
-                    {isFlood && <div style={{ color: '#ef4444', fontWeight: 700 }}>⚠ FLOOD ZONE</div>}
+                    {isFlood && <div className="map-alert-text">Flood zone</div>}
                   </div>
                 </Tooltip>
               </Polyline>
             )}
 
-            {/* Alternate route ghost */}
-            {routingMode === 'BASELINE' && rd.aiPositions.length >= 2 && (
+            {routingMode === 'BASELINE' && vehicle.aiPositions.length >= 2 && (
               <Polyline
-                positions={rd.aiPositions}
+                positions={vehicle.aiPositions}
                 pathOptions={{
-                  color: rd.color,
+                  color: vehicle.color,
                   opacity: 0.25,
                   weight: 4,
                   dashArray: '6, 8',
@@ -423,7 +573,6 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
           </React.Fragment>
         ))}
 
-        {/* Node dots */}
         {Object.entries(nodes).map(([nodeId, node]) => (
           <CircleMarker
             key={nodeId}
@@ -440,26 +589,32 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
           </CircleMarker>
         ))}
 
-        {/* Vehicle markers — snapped to polyline, rotated, with ETA */}
         {isLive &&
-          renderData.map((rd) => {
-            if (!rd.markerPos) return null;
+          renderData.map((vehicle) => {
+            if (!vehicle.markerPos) {
+              return null;
+            }
 
-            const icon = createVehicleIcon(rd.color, rd.bearing);
+            const icon = createVehicleIcon(vehicle.color, vehicle.bearing);
 
             return (
-              <Marker
-                key={`vehicle-${rd.id}`}
-                position={rd.markerPos}
-                icon={icon}
-              >
+              <Marker key={`vehicle-${vehicle.id}`} position={vehicle.markerPos} icon={icon}>
                 <Tooltip direction="top" permanent offset={[0, -22]}>
                   <div>
-                    <strong>{rd.id}</strong>
-                    <div>{rd.telemetry.location_label}</div>
-                    <div>{rd.hasArrived ? '0' : rd.speed} km/h</div>
-                    <div style={{ color: rd.hasArrived ? '#3fbd7c' : '#3ab3d8', fontWeight: 600 }}>
-                      {rd.hasArrived ? '✓ Arrived' : rd.etaMinutes > 0 ? `ETA: ${rd.etaMinutes} min` : ''}
+                    <strong>{vehicle.id}</strong>
+                    <div>{vehicle.telemetry.location_label}</div>
+                    <div>{vehicle.paused ? 'Map paused' : `${vehicle.speed} km/h`}</div>
+                    <div
+                      style={{
+                        color: vehicle.hasArrived ? '#3fbd7c' : '#3ab3d8',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {vehicle.hasArrived
+                        ? 'Arrived'
+                        : vehicle.etaMinutes > 0
+                          ? `ETA: ${vehicle.etaMinutes} min`
+                          : ''}
                     </div>
                   </div>
                 </Tooltip>
@@ -471,11 +626,11 @@ export default function LiveMap({ data, routingMode, demoState, onFlyInComplete,
   );
 }
 
-/** Fallback: extract positions from coordinate array or path+nodes */
 function fallbackPositions(route, nodes) {
   if (route?.coordinates?.length >= 2) {
-    return route.coordinates.map((p) => [p.lat, p.lng]);
+    return route.coordinates.map((point) => [point.lat, point.lng]);
   }
+
   if (route?.path?.length >= 2 && nodes) {
     return route.path
       .map((nodeId) => {
@@ -484,5 +639,6 @@ function fallbackPositions(route, nodes) {
       })
       .filter(Boolean);
   }
+
   return [];
 }

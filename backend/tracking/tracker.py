@@ -4,6 +4,8 @@ import math
 DEFAULT_TICK_SECONDS = 0.5
 SIMULATION_TIME_SCALE = 6.0
 DEFAULT_FUEL_CAPACITY_L = 120.0
+SPEED_SCALE = 0.25
+MAX_STEP_KM = 0.01
 
 
 def haversine_km(lat1, lng1, lat2, lng2):
@@ -290,7 +292,9 @@ class Tracker:
             telemetry["speed_kmh"] = 0.0
             telemetry["status"] = "Holding" if frozen else "Fuel Critical"
         else:
-            move_distance_km = speed_kmh * (self.tick_seconds / 3600.0) * self.time_scale
+            base_distance_km = speed_kmh * (self.tick_seconds / 3600.0)
+            move_distance_km = base_distance_km * self.time_scale * SPEED_SCALE
+            move_distance_km = min(move_distance_km, MAX_STEP_KM)
             remaining_move = move_distance_km
             fuel_capacity_l = float(vehicle.get("fuel_capacity_l", DEFAULT_FUEL_CAPACITY_L))
 
