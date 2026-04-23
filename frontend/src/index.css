@@ -722,3 +722,192 @@ button:hover {
   margin-bottom: 0.6rem;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Demo Setup Modal — Full-screen glassmorphism scenario picker
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.demo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(20, 66, 97, 0.6), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(223, 122, 45, 0.25), transparent 50%),
+    rgba(4, 8, 16, 0.92);
+  backdrop-filter: blur(24px);
+  animation: modal-backdrop-in 0.6s ease;
+}
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.demo-modal-content {
+  max-width: 720px;
+  width: 92%;
+  padding: 3rem 2.5rem 2.5rem;
+  border-radius: 32px;
+  background: rgba(8, 20, 30, 0.85);
+  border: 1px solid rgba(111, 167, 188, 0.2);
+  box-shadow:
+    0 48px 100px rgba(0, 0, 0, 0.5),
+    0 0 80px rgba(58, 179, 216, 0.08);
+  backdrop-filter: blur(20px);
+  animation: modal-content-in 0.5s ease 0.15s both;
+  text-align: center;
+}
+
+@keyframes modal-content-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.demo-modal-eyebrow {
+  margin: 0 0 0.5rem;
+  color: #70d0ea;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.demo-modal-title {
+  margin: 0 0 0.8rem;
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, #edf3f7, #70d0ea);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.demo-modal-subtitle {
+  margin: 0 0 2rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.demo-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem;
+  margin-bottom: 2rem;
+}
+
+.scenario-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1.3rem 1.2rem;
+  border-radius: 20px;
+  border: 1.5px solid;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  width: 100%;
+}
+
+.scenario-card:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.scenario-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.scenario-label {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.scenario-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.demo-modal-footer {
+  margin: 0;
+  color: rgba(158, 178, 191, 0.5);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Start Simulation Button Overlay
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.start-sim-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 16, 0.35);
+  backdrop-filter: blur(4px);
+  animation: overlay-fade-in 0.4s ease;
+  pointer-events: all;
+}
+
+.start-sim-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: auto !important;
+  padding: 1.1rem 2.2rem !important;
+  border-radius: 999px !important;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: linear-gradient(135deg, #3ab3d8, #2d8db8) !important;
+  border: 2px solid rgba(58, 179, 216, 0.5) !important;
+  box-shadow:
+    0 0 24px rgba(58, 179, 216, 0.3),
+    0 8px 32px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.start-sim-btn:hover {
+  transform: translateY(-2px) scale(1.04) !important;
+  box-shadow:
+    0 0 40px rgba(58, 179, 216, 0.5),
+    0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.start-sim-icon {
+  font-size: 1.3rem;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 24px rgba(58, 179, 216, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4); }
+  50%      { box-shadow: 0 0 40px rgba(58, 179, 216, 0.5), 0 8px 32px rgba(0, 0, 0, 0.4); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Responsive: modal on small screens
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 640px) {
+  .demo-modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .demo-modal-content {
+    padding: 2rem 1.5rem;
+  }
+
+  .demo-modal-title {
+    font-size: 1.5rem;
+  }
+}
