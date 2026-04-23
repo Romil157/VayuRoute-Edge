@@ -417,6 +417,17 @@ cd frontend && npm run build
 
 ---
 
+## Contributors
+
+* Romil Doshi — System Architecture, AI Integration, Platform Design
+* Yash Rathod — Backend and Routing Systems
+* Harsh G — Simulation and Tracking
+* Srushti — Frontend and UI
+
+This project was collaboratively developed with major contributions across AI modeling, simulation systems, and frontend engineering.
+
+---
+
 ## License
 
 This project is part of the VayuRoute research initiative for predictive logistics intelligence in disruption-prone urban environments.
