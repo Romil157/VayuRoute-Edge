@@ -5,9 +5,42 @@ export default function BusinessImpact({ metrics }) {
     return null;
   }
 
+  const dispatched = metrics.dispatch_count > 0;
+  const hasArrivals = metrics.deliveries_completed > 0;
+
+  if (!dispatched) {
+    return (
+      <div className="glass-panel">
+        <h2>Operations Impact</h2>
+        <p className="panel-copy panel-subtitle">Awaiting dispatch</p>
+        <div className="impact-grid">
+          <div className="impact-tile">
+            <span className="impact-label">Cost Delta</span>
+            <strong>--</strong>
+          </div>
+          <div className="impact-tile">
+            <span className="impact-label">Time Saved</span>
+            <strong>--</strong>
+          </div>
+          <div className="impact-tile">
+            <span className="impact-label">Fuel Saved</span>
+            <strong>--</strong>
+          </div>
+          <div className="impact-tile">
+            <span className="impact-label">SLA Breaches Avoided</span>
+            <strong>--</strong>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const subtitle = hasArrivals ? null : 'Projected';
+
   return (
     <div className="glass-panel">
       <h2>Operations Impact</h2>
+      {subtitle && <p className="panel-copy panel-subtitle">{subtitle}</p>}
 
       <div className="impact-grid">
         <div className="impact-tile">
@@ -23,11 +56,15 @@ export default function BusinessImpact({ metrics }) {
           <strong>{metrics.fuel_saved_l} L</strong>
         </div>
         <div className="impact-tile">
-          <span className="impact-label">Efficiency</span>
-          <strong>{metrics.efficiency_percentage}%</strong>
+          <span className="impact-label">SLA Breaches Avoided</span>
+          <strong>{metrics.sla_breached_baseline ?? 0}</strong>
         </div>
       </div>
 
+      <div className="stat-row">
+        <span className="stat-label">Efficiency</span>
+        <span>{metrics.efficiency_percentage}%</span>
+      </div>
       <div className="stat-row">
         <span className="stat-label">Fleet Load Utilization</span>
         <span>{metrics.fleet_load_utilization}%</span>

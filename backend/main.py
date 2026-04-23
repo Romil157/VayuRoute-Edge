@@ -30,6 +30,10 @@ async def simulation_loop():
     while True:
         try:
             payload = platform.tick()
+            if payload is None:
+                await asyncio.sleep(0.05)
+                continue
+
             dead_connections = []
 
             for connection in active_connections:

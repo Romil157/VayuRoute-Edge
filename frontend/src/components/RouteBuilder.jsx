@@ -11,19 +11,33 @@ export default function RouteBuilder({ nodes, vehicles }) {
   const [assignments, setAssignments] = useState([]);
   const [status, setStatus] = useState('');
 
+  const vehicleDefaults = {
+    V1: { start: 'A', end: 'J' },
+    V2: { start: 'F', end: 'R' },
+  };
+
   useEffect(() => {
     if (!nodes || !vehicles || assignments.length > 0) {
       return;
     }
 
     setAssignments(
-      vehicles.map((vehicle) => ({
-        vehicle_id: vehicle.id,
-        start: vehicle.pos,
-        end: vehicle.target,
-        fuel: vehicle.fuel,
-        stops: vehicle.stops?.length ? vehicle.stops : [],
-      })),
+      vehicles.map((vehicle) => {
+        const defaults = vehicleDefaults[vehicle.id] || {};
+        const start = defaults.start || vehicle.pos;
+        let end = defaults.end || vehicle.target;
+        if (end === start) {
+          const allIds = Object.keys(nodes);
+          end = allIds.find((id) => id !== start) || end;
+        }
+        return {
+          vehicle_id: vehicle.id,
+          start,
+          end,
+          fuel: vehicle.fuel,
+          stops: vehicle.stops?.length ? vehicle.stops : [],
+        };
+      }),
     );
   }, [assignments.length, nodes, vehicles]);
 

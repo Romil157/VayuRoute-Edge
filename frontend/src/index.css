@@ -626,3 +626,99 @@ button:hover {
     gap: 0.6rem;
   }
 }
+
+/* Section 4: Demo overlay banner */
+.demo-overlay {
+  position: absolute;
+  top: 1.2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  padding: 0.85rem 1.4rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(58, 179, 216, 0.18), rgba(255, 140, 66, 0.14));
+  color: #e8f4f8;
+  border: 1px solid rgba(58, 179, 216, 0.32);
+  backdrop-filter: blur(14px);
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  animation: overlay-fade-in 0.4s ease;
+  pointer-events: none;
+}
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Section 3: Failure vs success narrative blocks */
+.failure-narrative,
+.success-narrative {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 14px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.failure-narrative {
+  background: rgba(239, 100, 97, 0.08);
+  border: 1px solid rgba(239, 100, 97, 0.2);
+}
+
+.success-narrative {
+  background: rgba(63, 189, 124, 0.08);
+  border: 1px solid rgba(63, 189, 124, 0.2);
+}
+
+.narrative-label {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.35rem;
+}
+
+.narrative-fail {
+  background: rgba(239, 100, 97, 0.16);
+  color: #ffb0af;
+}
+
+.narrative-pass {
+  background: rgba(63, 189, 124, 0.16);
+  color: #9ef0c1;
+}
+
+.narrative-list {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+
+.narrative-list li {
+  margin-bottom: 0.15rem;
+}
+
+.delta-diverged {
+  color: #ffab00;
+  font-weight: 600;
+}
+
+/* Section 8: Route glow for AI polylines */
+.leaflet-overlay-pane svg path {
+  filter: drop-shadow(0 0 3px rgba(88, 166, 255, 0.3));
+}
+
+/* Section 6: Panel subtitle refinement */
+.panel-subtitle {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.6rem;
+}
+

@@ -1,10 +1,9 @@
 """
-router.py  -  RiskAwareRouter / DQNRoutePlanner
+router.py  -  RiskAwareRouter
 
-Provides the production route policy for VayuRoute Edge. The planner keeps the
-deterministic multi-objective cost model from the existing router and exposes a
-CPU-friendly DQN-style facade so the rest of the platform can describe the AI
-stack as STGCN + DQN without introducing a heavyweight training dependency.
+Provides the production route policy for VayuRoute Edge. The planner uses a
+deterministic multi-objective cost model to select routes that minimise a
+weighted combination of travel time, risk exposure, and fuel consumption.
 
 Multi-objective cost function (documented weights):
     cost(edge) = alpha * travel_time + beta * risk_score + gamma * fuel_penalty
@@ -74,13 +73,26 @@ def _walk_path(G, path):
     return total_cost, total_time, max_risk, flood_edges
 
 
-def _rejected_reason(flood_edge_count, horizon_mins=45):
+def _rejected_reason(flood_edge_count, max_risk, horizon_mins=45):
     if flood_edge_count == 0:
         return "Baseline route accepted - no flood exposure detected."
+    risk_label = "moderate" if max_risk < 70 else "severe"
     return (
         f"Rejected: {flood_edge_count} edge(s) exceed 60% flood probability "
-        f"in {horizon_mins}-min horizon."
+        f"({risk_label} risk at {round(max_risk)}%) in {horizon_mins}-min horizon."
     )
+
+
+def _route_reason(path, G, flood_edges, max_risk, time_saved=0):
+    """Generate a human-readable explanation for why the AI route was chosen."""
+    if flood_edges == 0 and time_saved <= 0:
+        return "AI route generated. No significant risk detected."
+    parts = []
+    if flood_edges > 0:
+        parts.append(f"Avoids {flood_edges} high-risk segment(s) (max risk {round(max_risk)}%)")
+    if time_saved > 0:
+        parts.append(f"saves {round(time_saved, 1)} min vs baseline")
+    return "Route " + " and ".join(parts) + "."
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +174,8 @@ class RiskAwareRouter:
                                     "reason": "No path found."}, "alternatives": [], "cost_function": {}}
             cost, t_time, max_risk, flood_edges = _walk_path(G, path)
             confidence = int(max(0, min(100, 100 - max_risk)))
-            reason     = _rejected_reason(flood_edges, horizon_mins)
+            reason     = _route_reason(path, G, flood_edges, max_risk)
+            rejected   = _rejected_reason(flood_edges, max_risk, horizon_mins)
             fuel_est   = int(t_time * 0.2)
             return {
                 "optimal": {
@@ -171,6 +184,7 @@ class RiskAwareRouter:
                     "risk":       round(max_risk, 1),
                     "confidence": confidence,
                     "reason":     reason,
+                    "rejected_reason": rejected,
                 },
                 "alternatives": [],
                 "cost_function": {
@@ -222,7 +236,8 @@ class RiskAwareRouter:
         best = candidates[0]
 
         confidence = int(max(0, min(100, 100 - best["risk"])))
-        reason     = _rejected_reason(best["flood_edges"], horizon_mins)
+        reason     = _route_reason(best["path"], G, best["flood_edges"], best["risk"])
+        rejected   = _rejected_reason(best["flood_edges"], best["risk"], horizon_mins)
         fuel_est   = int(best["time"] * 0.2)
 
         # Build alternative suggestions (fastest and safest variants)
@@ -234,7 +249,7 @@ class RiskAwareRouter:
             alt_f = dict(fastest)
             alt_f["type"] = "Faster but Risky"
             alt_f["confidence"] = int(max(0, min(100, 100 - fastest["risk"])))
-            alt_f["reason"] = _rejected_reason(fastest["flood_edges"], horizon_mins)
+            alt_f["reason"] = _rejected_reason(fastest["flood_edges"], fastest["risk"], horizon_mins)
             alt_f["cost_function"] = {
                 "Time": round(fastest["time"], 1),
                 "Risk": round(fastest["risk"], 1),
@@ -247,7 +262,7 @@ class RiskAwareRouter:
             alt_s = dict(safest)
             alt_s["type"] = "Slower but Safest"
             alt_s["confidence"] = int(max(0, min(100, 100 - safest["risk"])))
-            alt_s["reason"] = _rejected_reason(safest["flood_edges"], horizon_mins)
+            alt_s["reason"] = _rejected_reason(safest["flood_edges"], safest["risk"], horizon_mins)
             alt_s["cost_function"] = {
                 "Time": round(safest["time"], 1),
                 "Risk": round(safest["risk"], 1),
@@ -263,6 +278,7 @@ class RiskAwareRouter:
             "risk":       round(best["risk"], 1),
             "confidence": confidence,
             "reason":     reason,
+            "rejected_reason": rejected,
         }
         cf = {
             "Time":     round(best["time"], 1),

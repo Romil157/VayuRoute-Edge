@@ -55,6 +55,7 @@ function App() {
   const [routingMode, setRoutingMode] = useState('AI');
   const [viewMode, setViewMode] = useState('2D');
   const [weather, setWeather] = useState(null);
+  const [demoOverlay, setDemoOverlay] = useState('');
 
   useEffect(() => {
     if (data?.weather) {
@@ -124,12 +125,15 @@ function App() {
                 </div>
                 <div>
                   <span className="hero-stat-label">Model</span>
-                  <strong>STGCN + DQN</strong>
+                  <strong>STGCN + RiskAwareRouter</strong>
                 </div>
               </div>
             </div>
 
             <div className="hero-stage">
+              {demoOverlay && (
+                <div className="demo-overlay">{demoOverlay}</div>
+              )}
               {viewMode === '2D' ? (
                 <LiveMap data={data} routingMode={routingMode} />
               ) : (
@@ -146,7 +150,7 @@ function App() {
         <aside className="sidebar">
           <RouteBuilder nodes={data?.nodes} vehicles={vehicles} />
           <BusinessImpact metrics={metrics} />
-          <ControlPanel />
+          <ControlPanel onDemoOverlay={setDemoOverlay} />
           <DeltaComparison data={data} routingMode={routingMode} />
           <DecisionIntelligence data={data} routingMode={routingMode} />
           <CostFunctionPanel v1_ai={vehicles[0]?.ai} weather={weather} />

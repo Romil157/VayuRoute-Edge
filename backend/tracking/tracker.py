@@ -2,7 +2,7 @@ import math
 
 
 DEFAULT_TICK_SECONDS = 0.5
-SIMULATION_TIME_SCALE = 180.0
+SIMULATION_TIME_SCALE = 6.0
 DEFAULT_FUEL_CAPACITY_L = 120.0
 
 
@@ -211,7 +211,16 @@ class Tracker:
         )
 
         signature = ">".join(ai_route["nodes"])
-        if vehicle.get("dirty_route") or signature != vehicle["motion"].get("route_signature", ""):
+        old_signature = vehicle["motion"].get("route_signature", "")
+        old_nodes = old_signature.split(">") if old_signature else []
+        new_nodes = ai_route["nodes"]
+        route_endpoints_changed = (
+            not old_nodes
+            or not new_nodes
+            or old_nodes[0] != new_nodes[0]
+            or old_nodes[-1] != new_nodes[-1]
+        )
+        if vehicle.get("dirty_route") or route_endpoints_changed:
             vehicle["motion"] = {
                 "route_signature": signature,
                 "segment_index": 0,
@@ -231,6 +240,8 @@ class Tracker:
             vehicle["telemetry"]["status"] = "Assigned"
             vehicle["dirty_route"] = False
             vehicle["arrival_logged"] = False
+        else:
+            vehicle["motion"]["route_signature"] = signature
 
     def _current_route(self, vehicle):
         return vehicle.get("plans", {}).get(vehicle.get("active_route", "ai"), self._empty_route())
@@ -366,6 +377,7 @@ class Tracker:
             "speed": vehicle["telemetry"]["speed_kmh"],
             "stops": vehicle.get("stops", []),
             "fuel": round(vehicle.get("fuel", 100.0), 1),
+            "dispatched": vehicle.get("dispatched", False),
             "route": ai_route["coordinates"],
             "telemetry": vehicle["telemetry"],
             "truck_profile": vehicle.get("truck_profile", {}),
@@ -376,6 +388,7 @@ class Tracker:
                 "true_time": round(float(true_baseline_time), 1),
                 "rejected_reason": rejected_reason,
                 "sla_breached": sla_breached,
+                "max_risk": baseline_route["summary"]["max_risk"],
                 "distance_km": baseline_route["summary"]["distance_km"],
                 "fuel_est_l": baseline_route["summary"]["fuel_est_l"],
             },
@@ -388,10 +401,11 @@ class Tracker:
                 "max_risk": ai_optimal.get("risk", ai_route["summary"]["max_risk"]),
                 "fuel_est_l": ai_route["summary"]["fuel_est_l"],
                 "reason": ai_optimal.get("reason", "AI route generated."),
+                "rejected_reason": ai_optimal.get("rejected_reason", ""),
                 "time_saved": round(max(0.0, true_baseline_time - float(ai_optimal.get("time", 0.0))), 1),
                 "confidence": ai_optimal.get("confidence", 0),
-                "policy": ai_optimal.get("policy", "DQN"),
-                "q_value": ai_optimal.get("q_value", 0.0),
+                "policy": ai_optimal.get("policy", "RiskAwareRouter"),
+                "q_value": round(-ai_data.get("cost_function", {}).get("score", 0.0), 2),
                 "cost_function": ai_data.get("cost_function", {}),
                 "alternatives": ai_data.get("alternatives", []),
             },

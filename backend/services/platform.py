@@ -4,7 +4,7 @@ import time
 from ..data.graph_manager import GraphManager
 from ..data.weather_feed import get_weather_features
 from ..integrations.cloudtrack_adapter import CloudtrackOptimizerAdapter
-from ..models.dqn import DQNRoutePlanner
+from ..models.router import RiskAwareRouter
 from ..models.stgcn import PredictionService
 from ..simulation.simulator import Simulator
 from ..tracking.tracker import Tracker
@@ -20,10 +20,23 @@ class LogisticsIntelligencePlatform:
     def __init__(self):
         self.graph_mgr = GraphManager()
         self.stgcn = PredictionService(num_nodes=18)
-        self.router = DQNRoutePlanner()
+        self.router = RiskAwareRouter()
         self.simulator = Simulator()
         self.cloudtrack = CloudtrackOptimizerAdapter()
-        self.tracker = Tracker(self.graph_mgr, self.cloudtrack, tick_seconds=self.simulator.tick_seconds)
+
+        # Tracker initialization
+        self.tracker = Tracker(
+            self.graph_mgr,
+            self.cloudtrack,
+            tick_seconds=self.simulator.tick_seconds
+        )
+
+        # Central speed control (must align with tracker tuning)
+        self.tracker.time_scale = 6.0
+
+        # Tick timing control
+        self.tick_seconds = self.simulator.tick_seconds
+        self.last_tick_time = time.time()
 
     def get_locations(self):
         return self.graph_mgr.get_nodes()
@@ -33,7 +46,10 @@ class LogisticsIntelligencePlatform:
 
     def dispatch_routes(self, assignments):
         self.simulator.dispatch_routes(assignments, self.graph_mgr)
-        return {"status": "Fleet dispatch updated", "vehicles": [item["vehicle_id"] for item in assignments]}
+        return {
+            "status": "Fleet dispatch updated",
+            "vehicles": [item["vehicle_id"] for item in assignments]
+        }
 
     def dispatch_single_route(self, route_payload):
         assignment = dict(route_payload)
@@ -74,7 +90,16 @@ class LogisticsIntelligencePlatform:
         return true_time
 
     def tick(self):
+        # Enforce fixed tick rate
+        now = time.time()
+        elapsed = now - self.last_tick_time
+
+        if elapsed < self.tick_seconds:
+            return None  # Skip update to maintain consistent timing
+
+        self.last_tick_time = now
         start_time = time.time()
+
         self.simulator.step()
 
         weather = get_weather_features()
@@ -83,17 +108,21 @@ class LogisticsIntelligencePlatform:
         selected_nodes = self._collect_active_nodes()
         valid_nodes = self.graph_mgr.extract_subgraph_nodes(selected_nodes)
         subgraph_edges = self.graph_mgr.extract_subgraph_edges(valid_nodes)
+
         predicted_edges = self.stgcn.compute_ai_edge_weights(
             subgraph_edges,
             self.simulator.active_event,
             self.simulator.horizon_mins,
             weather=weather,
         )
+
         predicted_edge_map = self._edge_map(predicted_edges)
 
         vehicle_payloads = []
+
         for vehicle in self.simulator.vehicles:
             stops = vehicle.get("stops", [])
+
             baseline_path, baseline_time = self.graph_mgr.get_baseline_route(
                 vehicle["pos"],
                 vehicle["target"],
@@ -109,14 +138,18 @@ class LogisticsIntelligencePlatform:
                 horizon_mins=self.simulator.horizon_mins,
             )
 
-            self.tracker.sync_routes(vehicle, ai_data, baseline_path, predicted_edge_map)
-            self.tracker.advance_vehicle(
-                vehicle,
-                event_state=self.simulator.active_event,
-                weather=weather,
-                frozen=self.simulator.is_frozen,
-                on_arrival=self.simulator.mark_arrival,
-            )
+            if vehicle.get("dispatched", False):
+                self.tracker.sync_routes(vehicle, ai_data, baseline_path, predicted_edge_map)
+
+                self.tracker.advance_vehicle(
+                    vehicle,
+                    event_state=self.simulator.active_event,
+                    weather=weather,
+                    frozen=self.simulator.is_frozen,
+                    on_arrival=self.simulator.mark_arrival,
+                )
+            else:
+                self.tracker.ensure_vehicle_state(vehicle)
 
             true_baseline_time = self._true_baseline_time(
                 baseline_time,
@@ -129,6 +162,7 @@ class LogisticsIntelligencePlatform:
             sla_breached = bool(stops) and true_baseline_time > max_allowed_time
 
             rejected_reason = ai_data.get("optimal", {}).get("reason", "AI route generated.")
+
             if sla_breached:
                 rejected_reason = (
                     f"SLA breached on baseline: {round(true_baseline_time, 1)}m "
@@ -151,6 +185,7 @@ class LogisticsIntelligencePlatform:
             dispatch_count=self.simulator.dispatch_count,
             completed_deliveries=self.simulator.deliveries_completed,
         )
+
         decision_time_ms = round((time.time() - start_time) * 1000.0, 2)
 
         return {

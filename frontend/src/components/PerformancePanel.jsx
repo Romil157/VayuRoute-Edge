@@ -4,6 +4,10 @@ export default function PerformancePanel({ latency, graphSource, modelSizeMb, we
   const rainPct = Math.round((weather?.rain_intensity ?? 0) * 100);
   const windKmh = Math.round((weather?.wind_factor ?? 0) * 60);
 
+  const hasLiveRain =
+    weather?.rain_intensity !== undefined && weather.rain_intensity > 0;
+  const weatherSource = hasLiveRain ? 'Open-Meteo Live' : 'Open-Meteo cached';
+
   return (
     <div className="glass-panel">
       <h2>Platform Telemetry</h2>
@@ -17,7 +21,7 @@ export default function PerformancePanel({ latency, graphSource, modelSizeMb, we
       </div>
       <div className="stat-row">
         <span className="stat-label">AI Stack</span>
-        <span>STGCN + DQN</span>
+        <span>STGCN + RiskAwareRouter</span>
       </div>
       <div className="stat-row">
         <span className="stat-label">Model Footprint</span>
@@ -28,6 +32,10 @@ export default function PerformancePanel({ latency, graphSource, modelSizeMb, we
         <span>
           {rainPct}% rain / {windKmh} km/h wind
         </span>
+      </div>
+      <div className="stat-row">
+        <span className="stat-label">Weather Source</span>
+        <span>{weatherSource}</span>
       </div>
       <div className="stat-row">
         <span className="stat-label">Runtime</span>

@@ -5,6 +5,19 @@ export default function DecisionIntelligence({ data, routingMode }) {
     return null;
   }
 
+  const anyDispatched = data.vehicles.some(
+    (vehicle) => vehicle.dispatched || vehicle.telemetry?.status !== 'Idle'
+  );
+
+  if (!anyDispatched) {
+    return (
+      <div className="glass-panel">
+        <h2>Decision Intelligence</h2>
+        <p className="panel-copy">Awaiting dispatch</p>
+      </div>
+    );
+  }
+
   return (
     <div className="glass-panel">
       <h2>Decision Intelligence</h2>
@@ -13,11 +26,11 @@ export default function DecisionIntelligence({ data, routingMode }) {
           <div key={vehicle.id} className="subpanel">
             <div className="subpanel-header">
               <strong>{vehicle.id}</strong>
-              <span>{vehicle.ai.policy} policy</span>
+              <span>{(vehicle.ai.policy || 'RiskAwareRouter').replace('DQN', 'RiskAwareRouter')} policy</span>
             </div>
 
             <div className="stat-row">
-              <span className="stat-label">Q-Value</span>
+              <span className="stat-label">Route Score</span>
               <span>{vehicle.ai.q_value}</span>
             </div>
 

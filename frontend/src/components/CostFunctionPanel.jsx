@@ -6,7 +6,7 @@ export default function CostFunctionPanel({ v1_ai, weather }) {
 
   return (
     <div className="glass-panel">
-      <h2>STGCN + DQN Cost Model</h2>
+      <h2>STGCN + RiskAwareRouter Cost Model</h2>
 
       <div className="impact-grid">
         <div className="impact-tile">
@@ -32,7 +32,7 @@ export default function CostFunctionPanel({ v1_ai, weather }) {
         <span>{v1_ai?.confidence ?? 0}%</span>
       </div>
       <div className="stat-row">
-        <span className="stat-label">Policy Value</span>
+        <span className="stat-label">Route Score</span>
         <span>{v1_ai?.q_value ?? 0}</span>
       </div>
       <div className="stat-row">

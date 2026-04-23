@@ -17,7 +17,8 @@ class Simulator:
             "fuel_capacity_l": 120.0,
             "stops": [],
             "active_route": "ai",
-            "dirty_route": True,
+            "dispatched": False,
+            "dirty_route": False,
             "arrival_logged": False,
         }
 
@@ -71,6 +72,7 @@ class Simulator:
             vehicle["stops"] = stops
             vehicle["fuel"] = float(assignment.get("fuel", vehicle["fuel"]))
             vehicle["dirty_route"] = True
+            vehicle["dispatched"] = True
             vehicle["arrival_logged"] = False
             self.dispatch_count += 1
             self.log(

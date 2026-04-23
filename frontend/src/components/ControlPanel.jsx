@@ -3,8 +3,9 @@ import { apiUrl } from '../lib/api';
 
 const BASE = apiUrl('');
 
-export default function ControlPanel() {
+export default function ControlPanel({ onDemoOverlay }) {
   const [status, setStatus] = useState('');
+  const [demoRunning, setDemoRunning] = useState(false);
 
   const triggerEvent = async (type) => {
     setStatus(`Sending: ${type}...`);
@@ -30,22 +31,49 @@ export default function ControlPanel() {
     }
   };
 
+  const overlay = (msg) => {
+    if (onDemoOverlay) onDemoOverlay(msg);
+  };
+
   const runTurboDemo = async () => {
-    setStatus('Turbo demo starting...');
+    if (demoRunning) return;
+    setDemoRunning(true);
+    setStatus('Demo sequence running...');
+
+    overlay('Initializing fleet under normal conditions...');
     await triggerEvent('normal');
-    setTimeout(() => triggerEvent('rain'), 3000);
+
     setTimeout(() => {
+      overlay('Predicting disruption -- rain incoming...');
+      triggerEvent('rain');
+    }, 3000);
+
+    setTimeout(() => {
+      overlay('Flood detected -- recomputing optimal routes...');
       triggerEvent('flood');
       setTimeline(45);
     }, 7000);
+
     setTimeout(() => {
+      overlay('Avoiding high-risk corridor -- rerouting fleet...');
+    }, 9000);
+
+    setTimeout(() => {
+      overlay('Fuel reserve critical -- adjusting path selection...');
       triggerEvent('low_fuel');
     }, 13000);
+
     setTimeout(() => {
+      overlay('Recovery -- returning to nominal operations');
       triggerEvent('normal');
       setTimeline(0);
-      setStatus('Turbo demo complete.');
-    }, 20000);
+    }, 18000);
+
+    setTimeout(() => {
+      overlay('');
+      setStatus('Demo sequence complete.');
+      setDemoRunning(false);
+    }, 22000);
   };
 
   return (
@@ -83,15 +111,17 @@ export default function ControlPanel() {
 
         <button
           onClick={runTurboDemo}
+          disabled={demoRunning}
           style={{
-            backgroundColor: 'rgba(255,171,0,0.2)',
+            backgroundColor: demoRunning ? 'rgba(255,171,0,0.08)' : 'rgba(255,171,0,0.2)',
             color: '#ffab00',
             borderColor: '#ffab00',
             fontSize: '1rem',
-            padding: '1rem'
+            padding: '1rem',
+            opacity: demoRunning ? 0.6 : 1,
           }}
         >
-          Start Demo Sequence
+          {demoRunning ? 'Demo Running...' : 'Start Demo Sequence'}
         </button>
       </div>
     </div>
