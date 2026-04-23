@@ -3,7 +3,7 @@ import { apiUrl } from '../lib/api';
 
 const BASE = apiUrl('');
 
-export default function ControlPanel({ onDemoOverlay }) {
+export default function ControlPanel({ onDemoOverlay, onScenarioChange, onStartDemo }) {
   const [status, setStatus] = useState('');
   const [demoRunning, setDemoRunning] = useState(false);
 
@@ -35,45 +35,84 @@ export default function ControlPanel({ onDemoOverlay }) {
     if (onDemoOverlay) onDemoOverlay(msg);
   };
 
+  // ── Reset: snap vehicles to start, clear scenario, pause ──
+  const handleReset = async () => {
+    await triggerEvent('normal');
+    if (onScenarioChange) onScenarioChange('reset'); // 'reset' clears positions in LiveMap
+    overlay('');
+    // After clearing, set back to normal for display purposes
+    setTimeout(() => { if (onScenarioChange) onScenarioChange('normal'); }, 100);
+  };
+
+  // ── Rain: reduce truck speed, update scenario text ──
+  const handleRain = async () => {
+    await triggerEvent('rain');
+    if (onScenarioChange) onScenarioChange('rain');
+    overlay('🌧️ Rain detected — truck speeds reduced by 30%');
+    setTimeout(() => overlay(''), 4000);
+  };
+
+  // ── Flood: further reduce speed, turn routes red, show warning ──
+  const handleFlood = async () => {
+    await triggerEvent('flood');
+    setTimeline(45);
+    if (onScenarioChange) onScenarioChange('flood');
+    overlay('🌊 FLOOD ALERT — routes compromised, rerouting fleet');
+    setTimeout(() => overlay(''), 5000);
+  };
+
+  // ── Low fuel ──
+  const handleLowFuel = async () => {
+    await triggerEvent('low_fuel');
+    if (onScenarioChange) onScenarioChange('low_fuel');
+    overlay('⛽ Fuel reserve critical — adjusting path selection');
+    setTimeout(() => overlay(''), 4000);
+  };
+
+  // ── Start Demo Sequence: triggers flyTo + starts vehicle movement ──
   const runTurboDemo = async () => {
     if (demoRunning) return;
     setDemoRunning(true);
     setStatus('Demo sequence running...');
 
+    // Step 1: Trigger the flyTo + start via the state machine
+    if (onStartDemo) onStartDemo();
+
     overlay('Initializing fleet under normal conditions...');
     await triggerEvent('normal');
+    if (onScenarioChange) onScenarioChange('normal');
 
     setTimeout(() => {
-      overlay('Predicting disruption -- rain incoming...');
+      overlay('🌧️ Predicting disruption — rain incoming...');
       triggerEvent('rain');
-    }, 3000);
+      if (onScenarioChange) onScenarioChange('rain');
+    }, 6000);
 
     setTimeout(() => {
-      overlay('Flood detected -- recomputing optimal routes...');
+      overlay('🌊 Flood detected — recomputing optimal routes...');
       triggerEvent('flood');
       setTimeline(45);
-    }, 7000);
+      if (onScenarioChange) onScenarioChange('flood');
+    }, 12000);
 
     setTimeout(() => {
-      overlay('Avoiding high-risk corridor -- rerouting fleet...');
-    }, 9000);
-
-    setTimeout(() => {
-      overlay('Fuel reserve critical -- adjusting path selection...');
+      overlay('⛽ Fuel reserve critical — adjusting path selection...');
       triggerEvent('low_fuel');
-    }, 13000);
+      if (onScenarioChange) onScenarioChange('low_fuel');
+    }, 18000);
 
     setTimeout(() => {
-      overlay('Recovery -- returning to nominal operations');
+      overlay('✅ Recovery — returning to nominal operations');
       triggerEvent('normal');
       setTimeline(0);
-    }, 18000);
+      if (onScenarioChange) onScenarioChange('normal');
+    }, 24000);
 
     setTimeout(() => {
       overlay('');
       setStatus('Demo sequence complete.');
       setDemoRunning(false);
-    }, 22000);
+    }, 28000);
   };
 
   return (
@@ -94,16 +133,16 @@ export default function ControlPanel({ onDemoOverlay }) {
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-        <button className="btn-primary" onClick={() => triggerEvent('normal')}>
+        <button className="btn-primary" onClick={handleReset}>
           Reset Scenario
         </button>
-        <button onClick={() => triggerEvent('rain')}>
+        <button onClick={handleRain}>
           Trigger Rain Module
         </button>
-        <button className="btn-danger" onClick={() => triggerEvent('flood')}>
+        <button className="btn-danger" onClick={handleFlood}>
           Inject Flood Parameters
         </button>
-        <button onClick={() => triggerEvent('low_fuel')}>
+        <button onClick={handleLowFuel}>
           Drop Fuel Telemetry
         </button>
 
@@ -121,7 +160,7 @@ export default function ControlPanel({ onDemoOverlay }) {
             opacity: demoRunning ? 0.6 : 1,
           }}
         >
-          {demoRunning ? 'Demo Running...' : 'Start Demo Sequence'}
+          {demoRunning ? 'Demo Running...' : '▶ Start Demo Sequence'}
         </button>
       </div>
     </div>
