@@ -26,9 +26,7 @@ function AiNarrative({ vehicle }) {
   const confidence = vehicle.ai.confidence;
   const risk = vehicle.ai.max_risk ?? 0;
 
-  if (timeSaved <= 0 && confidence >= 90) {
-    return null;
-  }
+  /* Always show AI Outcome for dispatched vehicles */
 
   return (
     <div className="success-narrative">
