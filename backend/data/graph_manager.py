@@ -150,7 +150,17 @@ class GraphManager:
             return True
         except Exception as exc:
             print(f"[GraphManager] Cache load failed: {exc}")
+            self._remove_invalid_cache()
             return False
+
+    def _remove_invalid_cache(self):
+        try:
+            os.remove(CACHE_PATH)
+            print("[GraphManager] Removed incompatible OSM cache. A fresh cache will be rebuilt.")
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            print(f"[GraphManager] Failed to remove invalid cache: {exc}")
 
     def _try_fetch_osm(self):
         try:

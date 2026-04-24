@@ -45,9 +45,18 @@ export default function DecisionIntelligence({ data, routingMode }) {
             </div>
 
             <div className="stat-row">
+              <span className="stat-label">Routing Mode</span>
+              <span>{vehicle.ai.routing_mode ?? 'BALANCED'}</span>
+            </div>
+
+            <div className="stat-row">
               <span className="stat-label">Maximum Risk</span>
               <span>{vehicle.ai.max_risk}%</span>
             </div>
+
+            <p className="panel-copy">
+              {vehicle.ai.decision_reason ?? 'Using BALANCED mode by default.'}
+            </p>
 
             <p className="panel-copy">
               {routingMode === 'AI'

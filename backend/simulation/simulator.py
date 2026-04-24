@@ -1,4 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _normalize_vehicle_priority(priority):
+    if priority is None:
+        return None
+    normalized = str(priority).strip().upper()
+    if normalized in {"HIGH", "MEDIUM", "LOW"}:
+        return normalized
+    return None
 
 
 class Simulator:
@@ -20,6 +29,9 @@ class Simulator:
             "dispatched": False,
             "dirty_route": False,
             "arrival_logged": False,
+            "priority": None,
+            "sla_deadline": None,
+            "dispatch_reference_utc": None,
         }
 
     def reset(self):
@@ -71,6 +83,9 @@ class Simulator:
             vehicle["target"] = end
             vehicle["stops"] = stops
             vehicle["fuel"] = float(assignment.get("fuel", vehicle["fuel"]))
+            vehicle["priority"] = _normalize_vehicle_priority(assignment.get("priority"))
+            vehicle["sla_deadline"] = assignment.get("sla_deadline")
+            vehicle["dispatch_reference_utc"] = datetime.now(timezone.utc).isoformat()
             vehicle["dirty_route"] = True
             vehicle["dispatched"] = True
             vehicle["arrival_logged"] = False

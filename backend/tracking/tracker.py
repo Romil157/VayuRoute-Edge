@@ -366,7 +366,18 @@ class Tracker:
         telemetry["fuel_percent"] = round(vehicle.get("fuel", 100.0), 1)
         telemetry["fuel_liters"] = round(vehicle.get("fuel", 100.0) / 100.0 * vehicle.get("fuel_capacity_l", DEFAULT_FUEL_CAPACITY_L), 1)
 
-    def build_vehicle_payload(self, vehicle, ai_data, baseline_time, true_baseline_time, rejected_reason, sla_breached):
+    def build_vehicle_payload(
+        self,
+        vehicle,
+        ai_data,
+        baseline_time,
+        true_baseline_time,
+        rejected_reason,
+        sla_breached,
+        priority=None,
+        sla_deadline=None,
+        sla_remaining_mins=None,
+    ):
         ai_route = vehicle["plans"]["ai"]
         baseline_route = vehicle["plans"]["baseline"]
         ai_optimal = ai_data.get("optimal", {})
@@ -382,6 +393,9 @@ class Tracker:
             "stops": vehicle.get("stops", []),
             "fuel": round(vehicle.get("fuel", 100.0), 1),
             "dispatched": vehicle.get("dispatched", False),
+            "priority": priority,
+            "sla_deadline": sla_deadline,
+            "sla_remaining_mins": sla_remaining_mins,
             "route": ai_route["coordinates"],
             "telemetry": vehicle["telemetry"],
             "truck_profile": vehicle.get("truck_profile", {}),
@@ -410,6 +424,9 @@ class Tracker:
                 "confidence": ai_optimal.get("confidence", 0),
                 "policy": ai_optimal.get("policy", "RiskAwareRouter"),
                 "q_value": round(-ai_data.get("cost_function", {}).get("score", 0.0), 2),
+                "routing_mode": ai_data.get("routing_mode", "BALANCED"),
+                "selected_weights": ai_data.get("selected_weights", {}),
+                "decision_reason": ai_data.get("decision_reason", "Using BALANCED mode by default."),
                 "cost_function": ai_data.get("cost_function", {}),
                 "alternatives": ai_data.get("alternatives", []),
             },

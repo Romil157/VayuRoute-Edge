@@ -11,6 +11,28 @@ function emptyStop(defaultId) {
   return { id: defaultId, priority: 'Medium', deadline_mins: 60 };
 }
 
+function normalizeVehiclePriority(priority) {
+  const normalized = String(priority ?? '').trim().toUpperCase();
+  if (['HIGH', 'MEDIUM', 'LOW'].includes(normalized)) {
+    return normalized;
+  }
+  return 'MEDIUM';
+}
+
+function serializeAssignments(assignments) {
+  return assignments.map((assignment) => {
+    const nextDeadline = Number(assignment.sla_deadline);
+    return {
+      ...assignment,
+      priority: normalizeVehiclePriority(assignment.priority),
+      sla_deadline:
+        assignment.sla_deadline === '' || Number.isNaN(nextDeadline)
+          ? null
+          : nextDeadline,
+    };
+  });
+}
+
 export default function RouteBuilder({ nodes, vehicles }) {
   const [assignments, setAssignments] = useState([]);
   const [status, setStatus] = useState('');
@@ -36,6 +58,11 @@ export default function RouteBuilder({ nodes, vehicles }) {
         start,
         end,
         fuel: vehicle.fuel,
+        priority: normalizeVehiclePriority(vehicle.priority),
+        sla_deadline:
+          typeof vehicle.sla_remaining_mins === 'number'
+            ? Math.max(0, Math.ceil(vehicle.sla_remaining_mins))
+            : '',
         stops: vehicle.stops?.length ? vehicle.stops : [],
       };
     });
@@ -117,7 +144,7 @@ export default function RouteBuilder({ nodes, vehicles }) {
       const response = await fetch(`${BASE_URL}/api/routes/dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignments: nextAssignments }),
+        body: JSON.stringify({ assignments: serializeAssignments(nextAssignments) }),
       });
 
       if (!response.ok) {
@@ -208,6 +235,34 @@ export default function RouteBuilder({ nodes, vehicles }) {
                 value={assignment.fuel}
                 onChange={(event) =>
                   updateAssignment(assignment.vehicle_id, { fuel: Number(event.target.value) })
+                }
+              />
+            </label>
+
+            <label className="field-label">
+              Vehicle Priority
+              <select
+                value={assignment.priority}
+                onChange={(event) =>
+                  updateAssignment(assignment.vehicle_id, { priority: event.target.value })
+                }
+              >
+                <option value="HIGH">High Priority</option>
+                <option value="MEDIUM">Medium Priority</option>
+                <option value="LOW">Low Priority</option>
+              </select>
+            </label>
+
+            <label className="field-label">
+              SLA Remaining (min)
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="Optional"
+                value={assignment.sla_deadline}
+                onChange={(event) =>
+                  updateAssignment(assignment.vehicle_id, { sla_deadline: event.target.value })
                 }
               />
             </label>

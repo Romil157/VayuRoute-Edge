@@ -1,5 +1,6 @@
 import math
 import time
+from datetime import datetime, timezone
 
 from ..data.graph_manager import GraphManager
 from ..data.weather_feed import get_weather_features
@@ -122,6 +123,7 @@ class LogisticsIntelligencePlatform:
 
         for vehicle in self.simulator.vehicles:
             stops = vehicle.get("stops", [])
+            current_time_utc = datetime.now(timezone.utc)
 
             baseline_path, baseline_time = self.graph_mgr.get_baseline_route(
                 vehicle["pos"],
@@ -136,6 +138,11 @@ class LogisticsIntelligencePlatform:
                 vehicle["target"],
                 stops=stops,
                 horizon_mins=self.simulator.horizon_mins,
+                priority=vehicle.get("priority"),
+                sla_deadline=vehicle.get("sla_deadline"),
+                dispatch_reference_utc=vehicle.get("dispatch_reference_utc"),
+                fuel_level=vehicle.get("fuel"),
+                current_time_utc=current_time_utc,
             )
 
             if vehicle.get("dispatched", False):
@@ -177,6 +184,9 @@ class LogisticsIntelligencePlatform:
                     true_baseline_time=true_baseline_time,
                     rejected_reason=rejected_reason,
                     sla_breached=sla_breached,
+                    priority=vehicle.get("priority"),
+                    sla_deadline=vehicle.get("sla_deadline"),
+                    sla_remaining_mins=ai_data.get("sla_remaining_mins"),
                 )
             )
 
